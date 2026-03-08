@@ -248,7 +248,9 @@ async function getActiveBotIndices(): Promise<number[]> {
       indices.push(i);
     }
   }
-  return indices.length > 0 ? indices : [0, 1, 2, 3];
+  if (indices.length > 0) return indices;
+  const bots2 = await storage.getUserbots();
+  return bots2.length > 0 ? bots2.map((_, i) => i) : [0, 1, 2, 3];
 }
 
 export async function getFullScheduleForToday(): Promise<any> {
