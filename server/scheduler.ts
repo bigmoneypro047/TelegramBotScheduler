@@ -572,9 +572,17 @@ async function sendTelegramBotMessage(token: string, chatId: string, message: st
   }
 }
 
-async function sendUserbotMessage(_sessionString: string, _apiId: string, _apiHash: string, _chatId: string, _message: string): Promise<boolean> {
+async function sendUserbotMessage(sessionString: string, apiId: string, apiHash: string, chatId: string, message: string): Promise<boolean> {
   try {
-    log("Userbot message sending - session-based sending ready", "telegram");
+    const { TelegramClient } = await import("telegram");
+    const { StringSession } = await import("telegram/sessions");
+    const session = new StringSession(sessionString);
+    const client = new TelegramClient(session, parseInt(apiId), apiHash, {
+      connectionRetries: 3,
+    });
+    await client.connect();
+    await client.sendMessage(chatId, { message });
+    await client.disconnect();
     return true;
   } catch (err: any) {
     log(`Failed to send userbot message: ${err.message}`, "telegram");
@@ -611,12 +619,12 @@ async function executeScheduledMessage(botName: string, groupName: string, messa
   } else {
     const botIndex = parseInt(botName.replace("Userbot ", "")) - 1;
     const bot = bots[botIndex];
-    if (!bot || !bot.sessionString || !config?.apiId || !config?.apiHash) {
-      log(`${botName} not configured properly`, "scheduler");
+    if (!bot || !bot.sessionString || !bot.apiId || !bot.apiHash) {
+      log(`${botName} not configured properly (missing session/apiId/apiHash)`, "scheduler");
       await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: "skipped_no_config" });
       return;
     }
-    const success = await sendUserbotMessage(bot.sessionString, config.apiId, config.apiHash, group.groupId, message);
+    const success = await sendUserbotMessage(bot.sessionString, bot.apiId, bot.apiHash, group.groupId, message);
     await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: success ? "sent" : "failed" });
   }
 }

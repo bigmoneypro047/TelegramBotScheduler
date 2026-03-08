@@ -9,17 +9,17 @@ import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import {
   Bot,
-  Key,
-  Hash,
   Phone,
   Save,
   Shield,
   Users,
   MessageSquare,
-  Plus,
   Trash2,
   CheckCircle,
   XCircle,
+  Loader2,
+  KeyRound,
+  LogIn,
 } from "lucide-react";
 
 export default function Configuration() {
@@ -38,8 +38,6 @@ export default function Configuration() {
   });
 
   const [botToken, setBotToken] = useState("");
-  const [apiId, setApiId] = useState("");
-  const [apiHash, setApiHash] = useState("");
 
   const configMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/config", data),
@@ -65,14 +63,6 @@ export default function Configuration() {
     },
   });
 
-  const userbotMutation = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/userbots", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/userbots"] });
-      toast({ title: "Userbot updated" });
-    },
-  });
-
   return (
     <div className="space-y-6">
       <div>
@@ -88,7 +78,7 @@ export default function Configuration() {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Shield className="w-4 h-4" />
-            Bot Credentials
+            Main Bot Token
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -115,71 +105,18 @@ export default function Configuration() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="api-id" className="flex items-center gap-1.5 text-sm">
-                <Key className="w-3.5 h-3.5" />
-                API ID
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  id="api-id"
-                  type="password"
-                  placeholder={config?.apiId ? "API ID configured" : "Enter API ID..."}
-                  value={apiId}
-                  onChange={(e) => setApiId(e.target.value)}
-                  data-testid="input-api-id"
-                />
-                {config?.apiId && (
-                  <Badge variant="secondary" className="shrink-0 self-center">
-                    <CheckCircle className="w-3 h-3 mr-1" />
-                    Set
-                  </Badge>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="api-hash" className="flex items-center gap-1.5 text-sm">
-                <Hash className="w-3.5 h-3.5" />
-                API Hash
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  id="api-hash"
-                  type="password"
-                  placeholder={config?.apiHash ? "API Hash configured" : "Enter API Hash..."}
-                  value={apiHash}
-                  onChange={(e) => setApiHash(e.target.value)}
-                  data-testid="input-api-hash"
-                />
-                {config?.apiHash && (
-                  <Badge variant="secondary" className="shrink-0 self-center">
-                    <CheckCircle className="w-3 h-3 mr-1" />
-                    Set
-                  </Badge>
-                )}
-              </div>
-            </div>
-          </div>
-
           <Button
             onClick={() => {
-              const data: any = {};
-              if (botToken) data.botToken = botToken;
-              if (apiId) data.apiId = apiId;
-              if (apiHash) data.apiHash = apiHash;
-              data.isActive = true;
-              configMutation.mutate(data);
-              setBotToken("");
-              setApiId("");
-              setApiHash("");
+              if (botToken) {
+                configMutation.mutate({ botToken, isActive: true });
+                setBotToken("");
+              }
             }}
-            disabled={configMutation.isPending || (!botToken && !apiId && !apiHash)}
+            disabled={configMutation.isPending || !botToken}
             data-testid="button-save-config"
           >
             <Save className="w-4 h-4 mr-2" />
-            Save Credentials
+            Save Token
           </Button>
         </CardContent>
       </Card>
@@ -194,25 +131,12 @@ export default function Configuration() {
         <CardContent>
           {!userbots?.length ? (
             <div className="text-center py-6 text-muted-foreground text-sm">
-              No userbots configured. Go to Dashboard and click "Setup Default Bots & Groups" to create them.
+              No userbots configured.
             </div>
           ) : (
             <div className="space-y-3">
               {userbots.map((bot: any) => (
-                <UserbotRow
-                  key={bot.id}
-                  bot={bot}
-                  onSave={(phoneNumber) =>
-                    userbotMutation.mutate({
-                      id: bot.id,
-                      name: bot.name,
-                      phoneNumber,
-                      sessionString: bot.sessionString,
-                      isActive: !!phoneNumber,
-                      order: bot.order,
-                    })
-                  }
-                />
+                <UserbotLoginRow key={bot.id} bot={bot} />
               ))}
             </div>
           )}
@@ -223,13 +147,13 @@ export default function Configuration() {
         <CardHeader className="flex flex-row items-center justify-between gap-1">
           <CardTitle className="text-base flex items-center gap-2">
             <MessageSquare className="w-4 h-4" />
-            Groups ({groups?.length || 0} / 6)
+            Groups ({groups?.length || 0} / 8)
           </CardTitle>
         </CardHeader>
         <CardContent>
           {!groups?.length ? (
             <div className="text-center py-6 text-muted-foreground text-sm">
-              No groups configured. Go to Dashboard and click "Setup Default Bots & Groups" to create them.
+              No groups configured.
             </div>
           ) : (
             <div className="space-y-3">
@@ -257,71 +181,172 @@ export default function Configuration() {
   );
 }
 
-function UserbotRow({
-  bot,
-  onSave,
-}: {
-  bot: any;
-  onSave: (phone: string) => void;
-}) {
+function UserbotLoginRow({ bot }: { bot: any }) {
+  const { toast } = useToast();
   const [phone, setPhone] = useState("");
-  const [editing, setEditing] = useState(false);
+  const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [step, setStep] = useState<"idle" | "entering_phone" | "code_sent" | "needs_password">("idle");
+  const [loading, setLoading] = useState(false);
+
+  const hasSession = !!bot.sessionString;
+  const hasApiCreds = !!bot.apiId && !!bot.apiHash;
+
+  async function requestCode() {
+    if (!phone) return;
+    setLoading(true);
+    try {
+      const res = await apiRequest("POST", `/api/userbots/${bot.id}/request-code`, { phoneNumber: phone });
+      const data = await res.json();
+      if (data.success) {
+        setStep("code_sent");
+        toast({ title: "Code sent", description: "Check your Telegram app for the verification code." });
+      } else {
+        toast({ title: "Error", description: data.error, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+    setLoading(false);
+  }
+
+  async function verifyCode() {
+    if (!code) return;
+    setLoading(true);
+    try {
+      const res = await apiRequest("POST", `/api/userbots/${bot.id}/verify-code`, {
+        code,
+        password: password || undefined,
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStep("idle");
+        setPhone("");
+        setCode("");
+        setPassword("");
+        queryClient.invalidateQueries({ queryKey: ["/api/userbots"] });
+        toast({ title: "Authenticated", description: `${bot.name} is now connected and ready.` });
+      } else if (data.needsPassword) {
+        setStep("needs_password");
+        toast({ title: "2FA Required", description: "Enter your two-factor authentication password." });
+      } else {
+        toast({ title: "Error", description: data.error, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+    setLoading(false);
+  }
 
   return (
     <div
-      className="flex items-center gap-3 p-3 rounded-md bg-muted/30 border border-border"
+      className="p-3 rounded-md bg-muted/30 border border-border space-y-3"
       data-testid={`userbot-row-${bot.order}`}
     >
-      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary text-sm font-bold shrink-0">
-        {bot.order}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium">{bot.name}</span>
-          {bot.phoneNumber ? (
-            <Badge variant="secondary" className="text-[10px]">
-              <CheckCircle className="w-2.5 h-2.5 mr-1" />
-              {bot.phoneNumber}
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="text-[10px]">
-              <XCircle className="w-2.5 h-2.5 mr-1" />
-              Not configured
-            </Badge>
-          )}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary text-sm font-bold shrink-0">
+          {bot.order}
         </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium">{bot.name}</span>
+            {hasApiCreds && (
+              <Badge variant="secondary" className="text-[10px]">
+                <KeyRound className="w-2.5 h-2.5 mr-1" />
+                API Keys Set
+              </Badge>
+            )}
+            {hasSession ? (
+              <Badge variant="secondary" className="text-[10px] bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                <CheckCircle className="w-2.5 h-2.5 mr-1" />
+                Authenticated
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px]">
+                <XCircle className="w-2.5 h-2.5 mr-1" />
+                Not logged in
+              </Badge>
+            )}
+            {bot.phoneNumber && (
+              <span className="text-[10px] text-muted-foreground">{bot.phoneNumber}</span>
+            )}
+          </div>
+        </div>
+        {!hasSession && hasApiCreds && step === "idle" && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setStep("entering_phone")}
+            data-testid={`button-login-${bot.order}`}
+          >
+            <LogIn className="w-3 h-3 mr-1" />
+            Login
+          </Button>
+        )}
       </div>
-      {editing ? (
-        <div className="flex gap-1.5">
+
+      {step === "entering_phone" && (
+        <div className="flex gap-2 pl-11">
           <Input
-            placeholder="Phone number..."
+            placeholder="Phone number with country code (e.g. +234...)"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            className="w-40 h-8 text-xs"
+            className="h-8 text-xs flex-1"
             data-testid={`input-phone-${bot.order}`}
           />
           <Button
             size="sm"
-            onClick={() => {
-              onSave(phone);
-              setEditing(false);
-              setPhone("");
-            }}
-            data-testid={`button-save-phone-${bot.order}`}
+            onClick={requestCode}
+            disabled={loading || !phone}
+            data-testid={`button-send-code-${bot.order}`}
           >
-            <Save className="w-3 h-3" />
+            {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Phone className="w-3 h-3 mr-1" />}
+            Send Code
           </Button>
         </div>
-      ) : (
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => setEditing(true)}
-          data-testid={`button-edit-phone-${bot.order}`}
-        >
-          <Phone className="w-3 h-3 mr-1" />
-          {bot.phoneNumber ? "Update" : "Add Phone"}
-        </Button>
+      )}
+
+      {step === "code_sent" && (
+        <div className="flex gap-2 pl-11">
+          <Input
+            placeholder="Enter verification code"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            className="h-8 text-xs flex-1"
+            data-testid={`input-code-${bot.order}`}
+          />
+          <Button
+            size="sm"
+            onClick={verifyCode}
+            disabled={loading || !code}
+            data-testid={`button-verify-code-${bot.order}`}
+          >
+            {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
+            Verify
+          </Button>
+        </div>
+      )}
+
+      {step === "needs_password" && (
+        <div className="flex gap-2 pl-11">
+          <Input
+            type="password"
+            placeholder="Enter 2FA password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="h-8 text-xs flex-1"
+            data-testid={`input-2fa-${bot.order}`}
+          />
+          <Button
+            size="sm"
+            onClick={verifyCode}
+            disabled={loading || !password}
+            data-testid={`button-verify-2fa-${bot.order}`}
+          >
+            {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
+            Submit
+          </Button>
+        </div>
       )}
     </div>
   );

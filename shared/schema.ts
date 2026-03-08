@@ -23,6 +23,8 @@ export const userbots = pgTable("userbots", {
   name: text("name").notNull(),
   phoneNumber: text("phone_number"),
   sessionString: text("session_string"),
+  apiId: text("api_id"),
+  apiHash: text("api_hash"),
   isActive: boolean("is_active").default(false),
   order: integer("bot_order").notNull(),
 });

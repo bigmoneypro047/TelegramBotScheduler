@@ -32,6 +32,8 @@ export async function registerRoutes(
       ...b,
       phoneNumber: b.phoneNumber ? b.phoneNumber.slice(0, 4) + "****" + b.phoneNumber.slice(-2) : null,
       sessionString: b.sessionString ? "***configured***" : null,
+      apiId: b.apiId || null,
+      apiHash: b.apiHash ? b.apiHash.slice(0, 4) + "****" : null,
     })));
   });
 
@@ -117,6 +119,112 @@ export async function registerRoutes(
     }
 
     res.json({ success: true });
+  });
+
+  const loginSessions: Map<string, any> = new Map();
+
+  app.post("/api/userbots/:id/request-code", async (req, res) => {
+    try {
+      const bot = await storage.getUserbot(req.params.id);
+      if (!bot || !bot.apiId || !bot.apiHash) {
+        return res.status(400).json({ error: "Userbot not found or missing API credentials" });
+      }
+      const { phoneNumber } = req.body;
+      if (!phoneNumber) {
+        return res.status(400).json({ error: "Phone number is required" });
+      }
+
+      const { TelegramClient } = await import("telegram");
+      const { StringSession } = await import("telegram/sessions");
+
+      const client = new TelegramClient(
+        new StringSession(""),
+        parseInt(bot.apiId),
+        bot.apiHash,
+        { connectionRetries: 3 }
+      );
+
+      await client.connect();
+      const result = await client.sendCode(
+        { apiId: parseInt(bot.apiId), apiHash: bot.apiHash },
+        phoneNumber
+      );
+
+      loginSessions.set(req.params.id, {
+        client,
+        phoneNumber,
+        phoneCodeHash: result.phoneCodeHash,
+      });
+
+      res.json({ success: true, message: "Code sent to your phone" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/userbots/:id/verify-code", async (req, res) => {
+    try {
+      const session = loginSessions.get(req.params.id);
+      if (!session) {
+        return res.status(400).json({ error: "No login session found. Request code first." });
+      }
+
+      const { code, password } = req.body;
+      if (!code) {
+        return res.status(400).json({ error: "Verification code is required" });
+      }
+
+      const { client, phoneNumber, phoneCodeHash } = session;
+
+      try {
+        await client.invoke(
+          new (await import("telegram/tl")).Api.auth.SignIn({
+            phoneNumber,
+            phoneCodeHash,
+            phoneCode: code,
+          })
+        );
+      } catch (signInErr: any) {
+        if (signInErr.errorMessage === "SESSION_PASSWORD_NEEDED") {
+          if (!password) {
+            return res.status(400).json({
+              error: "Two-factor authentication is enabled. Please provide your password.",
+              needsPassword: true,
+            });
+          }
+          await client.invoke(
+            new (await import("telegram/tl")).Api.auth.CheckPassword({
+              password: await client.computeSrpParams(
+                await client.invoke(new (await import("telegram/tl")).Api.account.GetPassword()),
+                password
+              ),
+            })
+          );
+        } else {
+          throw signInErr;
+        }
+      }
+
+      const sessionString = (client.session as any).save();
+
+      await storage.upsertUserbot({
+        id: req.params.id,
+        name: `Userbot ${(await storage.getUserbot(req.params.id))?.order || 0}`,
+        phoneNumber,
+        sessionString,
+        apiId: (await storage.getUserbot(req.params.id))?.apiId || null,
+        apiHash: (await storage.getUserbot(req.params.id))?.apiHash || null,
+        isActive: true,
+        order: (await storage.getUserbot(req.params.id))?.order || 0,
+      });
+
+      await client.disconnect();
+      loginSessions.delete(req.params.id);
+
+      res.json({ success: true, message: "Userbot authenticated and session saved" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   app.post("/api/groups/bulk-setup", async (req, res) => {
