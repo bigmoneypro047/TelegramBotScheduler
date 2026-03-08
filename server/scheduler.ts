@@ -380,7 +380,7 @@ function shuffleArray<T>(arr: T[], seed: number): T[] {
   return result;
 }
 
-function generateReadySchedule(windowIndex: number, groupIndex: number, dayOfYear: number): { botIndex: number; message: string; minuteOffset: number }[] {
+function generateReadySchedule(windowIndex: number, groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3]): { botIndex: number; message: string; minuteOffset: number }[] {
   const seed = dayOfYear * 1000 + windowIndex * 100 + groupIndex;
   const shuffledMessages = shuffleArray(READY_MESSAGES, seed);
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
@@ -388,10 +388,10 @@ function generateReadySchedule(windowIndex: number, groupIndex: number, dayOfYea
   let s = seed + 7;
   let currentMinute = 0;
 
-  for (let botIdx = 0; botIdx < 4; botIdx++) {
+  for (let i = 0; i < activeBotIndices.length; i++) {
     schedule.push({
-      botIndex: botIdx,
-      message: shuffledMessages[botIdx % shuffledMessages.length],
+      botIndex: activeBotIndices[i],
+      message: shuffledMessages[i % shuffledMessages.length],
       minuteOffset: currentMinute,
     });
     s = (s * 1103515245 + 12345) & 0x7fffffff;
@@ -403,7 +403,7 @@ function generateReadySchedule(windowIndex: number, groupIndex: number, dayOfYea
   return schedule;
 }
 
-function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCount: number = 8): { botIndex: number; message: string; minuteOffset: number }[] {
+function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCount: number = 5, activeBotIndices: number[] = [0, 1, 2, 3]): { botIndex: number; message: string; minuteOffset: number }[] {
   const dayOfWeek = getNigeriaDate().getDay();
   const topicSets = EVENING_CHAT_TOPICS[dayOfWeek] || EVENING_CHAT_TOPICS[0];
 
@@ -426,7 +426,7 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
 
   for (let i = 0; i < groupMessages.length && currentMinute < totalMinutes; i++) {
     schedule.push({
-      botIndex: i % 4,
+      botIndex: activeBotIndices[i % activeBotIndices.length],
       message: groupMessages[i],
       minuteOffset: currentMinute,
     });
@@ -436,7 +436,7 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
   return schedule;
 }
 
-function generateMorningChatSchedule(groupIndex: number, dayOfYear: number): { botIndex: number; message: string; minuteOffset: number }[] {
+function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3]): { botIndex: number; message: string; minuteOffset: number }[] {
   const seed = dayOfYear * 50 + groupIndex * 7;
   const shuffled = shuffleArray(MORNING_CHAT_MESSAGES, seed);
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
@@ -444,7 +444,7 @@ function generateMorningChatSchedule(groupIndex: number, dayOfYear: number): { b
 
   for (let i = 0; i < Math.min(12, shuffled.length) && currentMinute < 60; i++) {
     schedule.push({
-      botIndex: i % 4,
+      botIndex: activeBotIndices[i % activeBotIndices.length],
       message: shuffled[i],
       minuteOffset: currentMinute,
     });
@@ -454,13 +454,13 @@ function generateMorningChatSchedule(groupIndex: number, dayOfYear: number): { b
   return schedule;
 }
 
-function generateDoneSchedule(groupIndex: number, dayOfYear: number): { botIndex: number; message: string; minuteOffset: number }[] {
+function generateDoneSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3]): { botIndex: number; message: string; minuteOffset: number }[] {
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
   let currentMinute = 0;
   const seed = dayOfYear * 30 + groupIndex;
-  const botOrder = shuffleArray([0, 1, 2, 3], seed);
+  const botOrder = shuffleArray(activeBotIndices, seed);
 
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < botOrder.length; i++) {
     schedule.push({
       botIndex: botOrder[i],
       message: "Done",
@@ -472,18 +472,31 @@ function generateDoneSchedule(groupIndex: number, dayOfYear: number): { botIndex
   return schedule;
 }
 
+async function getActiveBotIndices(): Promise<number[]> {
+  const bots = await storage.getUserbots();
+  const indices: number[] = [];
+  for (let i = 0; i < bots.length; i++) {
+    if (bots[i].isActive && bots[i].sessionString && bots[i].apiId && bots[i].apiHash) {
+      indices.push(i);
+    }
+  }
+  return indices.length > 0 ? indices : [0, 1, 2, 3];
+}
+
 export async function getFullScheduleForToday(): Promise<any> {
   const dayOfYear = getDayOfYear();
   const language = getLanguageForToday();
   const mainBotMessage = getMainBotMessageForToday();
   const groupsList = await storage.getGroups();
-  const numGroups = groupsList.length || 8;
+  const numGroups = groupsList.length || 5;
+  const activeBots = await getActiveBotIndices();
 
   const schedule: any = {
     language,
     mainBotMessage,
     mainBotTime: "8:10 AM",
     groupNames: groupsList.map(g => g.name),
+    activeBotIndices: activeBots,
     morningChat: [] as any[],
     readyWindows: [] as any[],
     doneWindow: [] as any[],
@@ -491,7 +504,7 @@ export async function getFullScheduleForToday(): Promise<any> {
   };
 
   for (let g = 0; g < numGroups; g++) {
-    const morningItems = generateMorningChatSchedule(g, dayOfYear);
+    const morningItems = generateMorningChatSchedule(g, dayOfYear, activeBots);
     schedule.morningChat.push({
       groupIndex: g,
       messages: morningItems.map(item => ({
@@ -505,7 +518,7 @@ export async function getFullScheduleForToday(): Promise<any> {
     const window = READY_WINDOWS[w];
     const windowSchedule: any[] = [];
     for (let g = 0; g < numGroups; g++) {
-      const items = generateReadySchedule(w, g, dayOfYear);
+      const items = generateReadySchedule(w, g, dayOfYear, activeBots);
       windowSchedule.push({
         groupIndex: g,
         messages: items.map(item => {
@@ -530,7 +543,7 @@ export async function getFullScheduleForToday(): Promise<any> {
   }
 
   for (let g = 0; g < numGroups; g++) {
-    const doneItems = generateDoneSchedule(g, dayOfYear);
+    const doneItems = generateDoneSchedule(g, dayOfYear, activeBots);
     schedule.doneWindow.push({
       groupIndex: g,
       messages: doneItems.map(item => ({
@@ -541,7 +554,7 @@ export async function getFullScheduleForToday(): Promise<any> {
   }
 
   for (let g = 0; g < numGroups; g++) {
-    const eveningItems = generateEveningMessages(g, dayOfYear, numGroups);
+    const eveningItems = generateEveningMessages(g, dayOfYear, numGroups, activeBots);
     schedule.eveningChat.push({
       groupIndex: g,
       messages: eveningItems.map(item => {
@@ -627,6 +640,11 @@ async function executeScheduledMessage(botName: string, groupName: string, messa
       await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: "skipped_no_config" });
       return;
     }
+    if (!bot.isActive) {
+      log(`${botName} is inactive, skipping`, "scheduler");
+      await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: "skipped_inactive" });
+      return;
+    }
     const success = await sendUserbotMessage(bot.sessionString, bot.apiId, bot.apiHash, group.groupId, message);
     await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: success ? "sent" : "failed" });
   }
@@ -649,8 +667,9 @@ export function startScheduler() {
   const morningJob = cron.schedule("0 7 * * *", async () => {
     const dayOfYear = getDayOfYear();
     const groupsList = await storage.getGroups();
+    const activeBots = await getActiveBotIndices();
     for (let g = 0; g < groupsList.length; g++) {
-      const items = generateMorningChatSchedule(g, dayOfYear);
+      const items = generateMorningChatSchedule(g, dayOfYear, activeBots);
       for (const item of items) {
         setTimeout(async () => {
           await executeScheduledMessage(
@@ -670,8 +689,9 @@ export function startScheduler() {
     const readyJob = cron.schedule(`${window.startMin} ${window.startHour} * * *`, async () => {
       const dayOfYear = getDayOfYear();
       const groupsList = await storage.getGroups();
+      const activeBots = await getActiveBotIndices();
       for (let g = 0; g < groupsList.length; g++) {
-        const items = generateReadySchedule(w, g, dayOfYear);
+        const items = generateReadySchedule(w, g, dayOfYear, activeBots);
         for (const item of items) {
           setTimeout(async () => {
             await executeScheduledMessage(
@@ -690,8 +710,9 @@ export function startScheduler() {
   const doneJob = cron.schedule("20 15 * * *", async () => {
     const dayOfYear = getDayOfYear();
     const groupsList = await storage.getGroups();
+    const activeBots = await getActiveBotIndices();
     for (let g = 0; g < groupsList.length; g++) {
-      const items = generateDoneSchedule(g, dayOfYear);
+      const items = generateDoneSchedule(g, dayOfYear, activeBots);
       for (const item of items) {
         setTimeout(async () => {
           await executeScheduledMessage(
@@ -709,8 +730,9 @@ export function startScheduler() {
   const eveningJob = cron.schedule("30 16 * * *", async () => {
     const dayOfYear = getDayOfYear();
     const groupsList = await storage.getGroups();
+    const activeBots = await getActiveBotIndices();
     for (let g = 0; g < groupsList.length; g++) {
-      const items = generateEveningMessages(g, dayOfYear, groupsList.length);
+      const items = generateEveningMessages(g, dayOfYear, groupsList.length, activeBots);
       for (const item of items) {
         setTimeout(async () => {
           await executeScheduledMessage(

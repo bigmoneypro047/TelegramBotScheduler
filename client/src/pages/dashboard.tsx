@@ -259,13 +259,13 @@ export default function Dashboard() {
               testId="check-api-credentials"
             />
             <ChecklistItem
-              label="Userbots (4)"
-              done={configuredBots.length === 4}
+              label={`Userbots (${configuredBots.length}/${userbots?.length || 0})`}
+              done={configuredBots.length >= 3}
               testId="check-userbots"
             />
             <ChecklistItem
-              label="Groups (6)"
-              done={configuredGroups.length === 6}
+              label={`Groups (${configuredGroups.length}/${groups?.length || 0})`}
+              done={configuredGroups.length >= 5}
               testId="check-groups"
             />
           </CardContent>

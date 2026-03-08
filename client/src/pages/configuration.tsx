@@ -147,7 +147,7 @@ export default function Configuration() {
         <CardHeader className="flex flex-row items-center justify-between gap-1">
           <CardTitle className="text-base flex items-center gap-2">
             <MessageSquare className="w-4 h-4" />
-            Groups ({groups?.length || 0} / 8)
+            Groups ({groups?.length || 0} / 5)
           </CardTitle>
         </CardHeader>
         <CardContent>
