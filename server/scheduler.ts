@@ -179,7 +179,8 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
   }
 
   const seed = dayOfYear * 100 + groupIndex * 37;
-  const shuffled = shuffleArray(allMessages, seed);
+  const uniqueMessages = [...new Set(allMessages)];
+  const shuffled = shuffleArray(uniqueMessages, seed);
 
   const totalMinutes = 180;
   const maxMessages = Math.floor(totalMinutes / 10) + 1;
@@ -204,7 +205,8 @@ function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, acti
   const lang = getConversationLanguageForDay(dayOfYear);
   const messages = MORNING_CHAT_BY_LANG[lang] || MORNING_CHAT_BY_LANG["English"];
   const seed = dayOfYear * 50 + groupIndex * 7;
-  const shuffled = shuffleArray(messages, seed);
+  const uniqueMessages = [...new Set(messages)];
+  const shuffled = shuffleArray(uniqueMessages, seed);
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
   let currentMinute = 0;
 
