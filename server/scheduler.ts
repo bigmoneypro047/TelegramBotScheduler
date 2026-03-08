@@ -181,7 +181,7 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
   const seed = dayOfYear * 100 + groupIndex * 37;
   const shuffled = shuffleArray(allMessages, seed);
 
-  const totalMinutes = 150;
+  const totalMinutes = 180;
   const maxMessages = Math.floor(totalMinutes / 10) + 1;
   const groupMessages = shuffled.slice(0, Math.min(maxMessages, shuffled.length));
 
@@ -669,7 +669,7 @@ export function startScheduler() {
   }, { timezone: NIGERIA_TZ });
   scheduledJobs.push(doneJob);
 
-  const eveningJob = cron.schedule("30 16 * * *", async () => {
+  const eveningJob = cron.schedule("0 16 * * *", async () => {
     try {
       log("=== EVENING CHAT TRIGGERED ===", "scheduler");
       const dayOfYear = getDayOfYear();
@@ -737,7 +737,7 @@ export async function triggerEveningChatNow(): Promise<string> {
     if (groupsList.length === 0) return "No groups configured";
 
     const now = getNigeriaDate();
-    const currentMinutesFromStart = (now.getHours() * 60 + now.getMinutes()) - (16 * 60 + 30);
+    const currentMinutesFromStart = (now.getHours() * 60 + now.getMinutes()) - (16 * 60);
 
     const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
     for (let g = 0; g < groupsList.length; g++) {
