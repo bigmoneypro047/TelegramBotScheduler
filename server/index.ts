@@ -4,6 +4,16 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startWatchdog } from "./watchdog";
 
+process.on("uncaughtException", (err) => {
+  console.error(`UNCAUGHT EXCEPTION: ${err.message}`);
+  console.error(err.stack);
+});
+
+process.on("unhandledRejection", (reason: any) => {
+  console.error(`UNHANDLED REJECTION: ${reason?.message || reason}`);
+  if (reason?.stack) console.error(reason.stack);
+});
+
 const app = express();
 const httpServer = createServer(app);
 

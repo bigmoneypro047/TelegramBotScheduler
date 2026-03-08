@@ -1,23 +1,45 @@
 import { log } from "./index";
+import { startScheduler, getSchedulerStatus } from "./scheduler";
 
 let selfPingInterval: ReturnType<typeof setInterval> | null = null;
 let watchdogInterval: ReturnType<typeof setInterval> | null = null;
+let externalPingInterval: ReturnType<typeof setInterval> | null = null;
+let schedulerGuardInterval: ReturnType<typeof setInterval> | null = null;
 let lastPingSuccess: Date | null = null;
+let lastExternalPingSuccess: Date | null = null;
 let pingCount = 0;
 let failCount = 0;
+let externalPingCount = 0;
+let externalFailCount = 0;
+let schedulerRestartCount = 0;
 let startTime: Date | null = null;
 
-const SELF_PING_INTERVAL = 4 * 60 * 1000;
+const SELF_PING_INTERVAL = 2 * 60 * 1000;
+const EXTERNAL_PING_INTERVAL = 3 * 60 * 1000;
 const WATCHDOG_INTERVAL = 5 * 60 * 1000;
+const SCHEDULER_GUARD_INTERVAL = 60 * 1000;
 
-function getAppUrl(): string {
+function getLocalUrl(): string {
   const port = process.env.PORT || "5000";
   return `http://127.0.0.1:${port}`;
 }
 
+function getExternalUrl(): string | null {
+  const replSlug = process.env.REPL_SLUG;
+  const replOwner = process.env.REPL_OWNER;
+  if (replSlug && replOwner) {
+    return `https://${replSlug}.${replOwner}.repl.co`;
+  }
+  const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
+  if (replitDevDomain) {
+    return `https://${replitDevDomain}`;
+  }
+  return null;
+}
+
 async function selfPing(): Promise<boolean> {
   try {
-    const url = `${getAppUrl()}/api/health`;
+    const url = `${getLocalUrl()}/api/health`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     const response = await fetch(url, { signal: controller.signal });
@@ -37,21 +59,65 @@ async function selfPing(): Promise<boolean> {
   }
 }
 
+async function externalPing(): Promise<boolean> {
+  const extUrl = getExternalUrl();
+  if (!extUrl) return true;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    const response = await fetch(`${extUrl}/api/health`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (response.ok) {
+      lastExternalPingSuccess = new Date();
+      externalPingCount++;
+      return true;
+    }
+    externalFailCount++;
+    return false;
+  } catch (err: any) {
+    externalFailCount++;
+    return false;
+  }
+}
+
+function schedulerGuard(): void {
+  try {
+    const status = getSchedulerStatus();
+    if (!status.isRunning) {
+      schedulerRestartCount++;
+      log(`Scheduler guard: scheduler is DOWN — auto-restarting (restart #${schedulerRestartCount})`, "watchdog");
+      startScheduler();
+      const newStatus = getSchedulerStatus();
+      log(`Scheduler guard: restarted — isRunning=${newStatus.isRunning}, jobs=${newStatus.jobCount}`, "watchdog");
+    }
+  } catch (err: any) {
+    log(`Scheduler guard error: ${err.message}`, "watchdog");
+  }
+}
+
 async function watchdogCheck(): Promise<void> {
   const now = new Date();
   const uptimeMs = startTime ? now.getTime() - startTime.getTime() : 0;
   const uptimeHours = Math.floor(uptimeMs / (1000 * 60 * 60));
   const uptimeMinutes = Math.floor((uptimeMs % (1000 * 60 * 60)) / (1000 * 60));
+  const schedulerStatus = getSchedulerStatus();
 
-  log(`Watchdog check — uptime: ${uptimeHours}h ${uptimeMinutes}m | pings: ${pingCount} ok, ${failCount} fail`, "watchdog");
+  log(
+    `Watchdog — uptime: ${uptimeHours}h ${uptimeMinutes}m | ` +
+    `local pings: ${pingCount} ok/${failCount} fail | ` +
+    `external pings: ${externalPingCount} ok/${externalFailCount} fail | ` +
+    `scheduler: ${schedulerStatus.isRunning ? "RUNNING" : "DOWN"} (${schedulerStatus.jobCount} jobs) | ` +
+    `scheduler restarts: ${schedulerRestartCount}`,
+    "watchdog"
+  );
 
   const pingOk = await selfPing();
   if (!pingOk) {
-    log("Watchdog: ping failed, attempting recovery ping...", "watchdog");
+    log("Watchdog: local ping failed, retrying in 5s...", "watchdog");
     await new Promise(r => setTimeout(r, 5000));
     const retryOk = await selfPing();
     if (!retryOk) {
-      log("Watchdog: recovery ping also failed — server may be unresponsive", "watchdog");
+      log("Watchdog: CRITICAL — server unresponsive after retry", "watchdog");
     } else {
       log("Watchdog: recovery ping succeeded", "watchdog");
     }
@@ -62,31 +128,37 @@ export function startWatchdog(): void {
   if (selfPingInterval || watchdogInterval) return;
 
   startTime = new Date();
-  log("Watchdog + self-ping keepalive started", "watchdog");
+  log("Watchdog ACTIVATED — self-ping every 2min, external ping every 3min, scheduler guard every 1min", "watchdog");
 
   selfPingInterval = setInterval(async () => {
     await selfPing();
   }, SELF_PING_INTERVAL);
 
+  externalPingInterval = setInterval(async () => {
+    await externalPing();
+  }, EXTERNAL_PING_INTERVAL);
+
   watchdogInterval = setInterval(async () => {
     await watchdogCheck();
   }, WATCHDOG_INTERVAL);
 
+  schedulerGuardInterval = setInterval(() => {
+    schedulerGuard();
+  }, SCHEDULER_GUARD_INTERVAL);
+
   setTimeout(async () => {
     const ok = await selfPing();
     log(`Initial self-ping: ${ok ? "OK" : "FAILED"}`, "watchdog");
-  }, 10000);
+
+    schedulerGuard();
+  }, 5000);
 }
 
 export function stopWatchdog(): void {
-  if (selfPingInterval) {
-    clearInterval(selfPingInterval);
-    selfPingInterval = null;
-  }
-  if (watchdogInterval) {
-    clearInterval(watchdogInterval);
-    watchdogInterval = null;
-  }
+  if (selfPingInterval) { clearInterval(selfPingInterval); selfPingInterval = null; }
+  if (externalPingInterval) { clearInterval(externalPingInterval); externalPingInterval = null; }
+  if (watchdogInterval) { clearInterval(watchdogInterval); watchdogInterval = null; }
+  if (schedulerGuardInterval) { clearInterval(schedulerGuardInterval); schedulerGuardInterval = null; }
   log("Watchdog stopped", "watchdog");
 }
 
@@ -100,10 +172,16 @@ export function getWatchdogStatus() {
     isRunning: !!(selfPingInterval && watchdogInterval),
     uptime: `${uptimeHours}h ${uptimeMinutes}m`,
     uptimeMs,
-    lastPingSuccess: lastPingSuccess?.toISOString() || null,
-    pingSuccessCount: pingCount,
-    pingFailCount: failCount,
-    selfPingIntervalMs: SELF_PING_INTERVAL,
-    watchdogIntervalMs: WATCHDOG_INTERVAL,
+    lastLocalPingSuccess: lastPingSuccess?.toISOString() || null,
+    lastExternalPingSuccess: lastExternalPingSuccess?.toISOString() || null,
+    localPings: { success: pingCount, fail: failCount },
+    externalPings: { success: externalPingCount, fail: externalFailCount },
+    schedulerRestartCount,
+    intervals: {
+      selfPingMs: SELF_PING_INTERVAL,
+      externalPingMs: EXTERNAL_PING_INTERVAL,
+      watchdogMs: WATCHDOG_INTERVAL,
+      schedulerGuardMs: SCHEDULER_GUARD_INTERVAL,
+    },
   };
 }

@@ -408,13 +408,51 @@ async function executeScheduledMessage(botName: string, groupName: string, messa
 
 let lastHeartbeat: Date | null = null;
 
+interface FailedMessage {
+  botName: string;
+  groupName: string;
+  message: string;
+  period: string;
+  failedAt: Date;
+  retryCount: number;
+}
+
+const failedMessageQueue: FailedMessage[] = [];
+const MAX_QUEUE_RETRIES = 2;
+const QUEUE_RETRY_INTERVAL = 10 * 60 * 1000;
+let queueRetryInterval: ReturnType<typeof setInterval> | null = null;
+
+async function retryFailedMessages(): Promise<void> {
+  if (failedMessageQueue.length === 0) return;
+
+  const toRetry = [...failedMessageQueue];
+  failedMessageQueue.length = 0;
+
+  log(`Retrying ${toRetry.length} failed messages from queue...`, "scheduler");
+  for (const item of toRetry) {
+    try {
+      await executeScheduledMessage(item.botName, item.groupName, item.message, item.period + "_retry");
+      log(`Queue retry SUCCESS: ${item.botName} → ${item.groupName}`, "scheduler");
+    } catch (err: any) {
+      if (item.retryCount < MAX_QUEUE_RETRIES) {
+        item.retryCount++;
+        failedMessageQueue.push(item);
+        log(`Queue retry FAILED (attempt ${item.retryCount}/${MAX_QUEUE_RETRIES}): ${item.botName} → ${item.groupName}`, "scheduler");
+      } else {
+        log(`Queue retry EXHAUSTED: ${item.botName} → ${item.groupName} — message permanently failed`, "scheduler");
+      }
+    }
+  }
+}
+
 async function safeExecuteScheduledMessage(botName: string, groupName: string, message: string, period: string) {
   try {
     await executeScheduledMessage(botName, groupName, message, period);
   } catch (err: any) {
     log(`CRITICAL: executeScheduledMessage crashed for ${botName}/${groupName}: ${err.message}`, "scheduler");
+    failedMessageQueue.push({ botName, groupName, message, period, failedAt: new Date(), retryCount: 0 });
     try {
-      await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: "error_crash" });
+      await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: "error_crash_queued" });
     } catch (_) {}
   }
 }
@@ -527,7 +565,11 @@ export function startScheduler() {
   }, { timezone: NIGERIA_TZ });
   scheduledJobs.push(eveningJob);
 
-  log(`Scheduled ${scheduledJobs.length} cron jobs (including heartbeat)`, "scheduler");
+  queueRetryInterval = setInterval(async () => {
+    await retryFailedMessages();
+  }, QUEUE_RETRY_INTERVAL);
+
+  log(`Scheduled ${scheduledJobs.length} cron jobs (including heartbeat) + failed-message retry every 10min`, "scheduler");
 }
 
 export function stopScheduler() {
@@ -535,6 +577,10 @@ export function stopScheduler() {
     job.stop();
   }
   scheduledJobs = [];
+  if (queueRetryInterval) {
+    clearInterval(queueRetryInterval);
+    queueRetryInterval = null;
+  }
   isSchedulerRunning = false;
   log("Scheduler stopped", "scheduler");
 }
@@ -547,6 +593,7 @@ export function getSchedulerStatus() {
     conversationLanguage: getConversationLanguageForDay(getDayOfYear()),
     mainBotMessage: getMainBotMessageForToday(),
     lastHeartbeat: lastHeartbeat?.toISOString() || null,
+    failedQueueSize: failedMessageQueue.length,
     retryConfig: { maxRetries: MAX_RETRIES, delaysMs: RETRY_DELAYS },
   };
 }
