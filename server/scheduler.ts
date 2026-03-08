@@ -403,7 +403,7 @@ function generateReadySchedule(windowIndex: number, groupIndex: number, dayOfYea
   return schedule;
 }
 
-function generateEveningMessages(groupIndex: number, dayOfYear: number): { botIndex: number; message: string; minuteOffset: number }[] {
+function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCount: number = 8): { botIndex: number; message: string; minuteOffset: number }[] {
   const dayOfWeek = getNigeriaDate().getDay();
   const topicSets = EVENING_CHAT_TOPICS[dayOfWeek] || EVENING_CHAT_TOPICS[0];
 
@@ -415,7 +415,8 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number): { botIn
   const seed = dayOfYear * 100 + groupIndex * 37;
   const shuffled = shuffleArray(allMessages, seed);
 
-  const messagesPerGroup = Math.floor(shuffled.length / 6);
+  const totalGroups = Math.max(groupCount, 1);
+  const messagesPerGroup = Math.floor(shuffled.length / totalGroups);
   const startIdx = groupIndex * messagesPerGroup;
   const groupMessages = shuffled.slice(startIdx, startIdx + messagesPerGroup);
 
@@ -471,22 +472,25 @@ function generateDoneSchedule(groupIndex: number, dayOfYear: number): { botIndex
   return schedule;
 }
 
-export function getFullScheduleForToday(): any {
+export async function getFullScheduleForToday(): Promise<any> {
   const dayOfYear = getDayOfYear();
   const language = getLanguageForToday();
   const mainBotMessage = getMainBotMessageForToday();
+  const groupsList = await storage.getGroups();
+  const numGroups = groupsList.length || 8;
 
   const schedule: any = {
     language,
     mainBotMessage,
     mainBotTime: "8:10 AM",
+    groupNames: groupsList.map(g => g.name),
     morningChat: [] as any[],
     readyWindows: [] as any[],
     doneWindow: [] as any[],
     eveningChat: [] as any[],
   };
 
-  for (let g = 0; g < 6; g++) {
+  for (let g = 0; g < numGroups; g++) {
     const morningItems = generateMorningChatSchedule(g, dayOfYear);
     schedule.morningChat.push({
       groupIndex: g,
@@ -500,7 +504,7 @@ export function getFullScheduleForToday(): any {
   for (let w = 0; w < READY_WINDOWS.length; w++) {
     const window = READY_WINDOWS[w];
     const windowSchedule: any[] = [];
-    for (let g = 0; g < 6; g++) {
+    for (let g = 0; g < numGroups; g++) {
       const items = generateReadySchedule(w, g, dayOfYear);
       windowSchedule.push({
         groupIndex: g,
@@ -525,7 +529,7 @@ export function getFullScheduleForToday(): any {
     });
   }
 
-  for (let g = 0; g < 6; g++) {
+  for (let g = 0; g < numGroups; g++) {
     const doneItems = generateDoneSchedule(g, dayOfYear);
     schedule.doneWindow.push({
       groupIndex: g,
@@ -536,8 +540,8 @@ export function getFullScheduleForToday(): any {
     });
   }
 
-  for (let g = 0; g < 6; g++) {
-    const eveningItems = generateEveningMessages(g, dayOfYear);
+  for (let g = 0; g < numGroups; g++) {
+    const eveningItems = generateEveningMessages(g, dayOfYear, numGroups);
     schedule.eveningChat.push({
       groupIndex: g,
       messages: eveningItems.map(item => {
@@ -631,11 +635,10 @@ export function startScheduler() {
   }, { timezone: NIGERIA_TZ });
   scheduledJobs.push(mainBotJob);
 
-  for (let g = 0; g < 6; g++) {
-    const morningJob = cron.schedule("0 7 * * *", async () => {
-      const dayOfYear = getDayOfYear();
-      const groupsList = await storage.getGroups();
-      if (g >= groupsList.length) return;
+  const morningJob = cron.schedule("0 7 * * *", async () => {
+    const dayOfYear = getDayOfYear();
+    const groupsList = await storage.getGroups();
+    for (let g = 0; g < groupsList.length; g++) {
       const items = generateMorningChatSchedule(g, dayOfYear);
       for (const item of items) {
         setTimeout(async () => {
@@ -647,17 +650,16 @@ export function startScheduler() {
           );
         }, item.minuteOffset * 60 * 1000);
       }
-    }, { timezone: NIGERIA_TZ });
-    scheduledJobs.push(morningJob);
-  }
+    }
+  }, { timezone: NIGERIA_TZ });
+  scheduledJobs.push(morningJob);
 
   for (let w = 0; w < READY_WINDOWS.length; w++) {
     const window = READY_WINDOWS[w];
-    for (let g = 0; g < 6; g++) {
-      const readyJob = cron.schedule(`${window.startMin} ${window.startHour} * * *`, async () => {
-        const dayOfYear = getDayOfYear();
-        const groupsList = await storage.getGroups();
-        if (g >= groupsList.length) return;
+    const readyJob = cron.schedule(`${window.startMin} ${window.startHour} * * *`, async () => {
+      const dayOfYear = getDayOfYear();
+      const groupsList = await storage.getGroups();
+      for (let g = 0; g < groupsList.length; g++) {
         const items = generateReadySchedule(w, g, dayOfYear);
         for (const item of items) {
           setTimeout(async () => {
@@ -669,16 +671,15 @@ export function startScheduler() {
             );
           }, item.minuteOffset * 60 * 1000);
         }
-      }, { timezone: NIGERIA_TZ });
-      scheduledJobs.push(readyJob);
-    }
+      }
+    }, { timezone: NIGERIA_TZ });
+    scheduledJobs.push(readyJob);
   }
 
-  for (let g = 0; g < 6; g++) {
-    const doneJob = cron.schedule("20 15 * * *", async () => {
-      const dayOfYear = getDayOfYear();
-      const groupsList = await storage.getGroups();
-      if (g >= groupsList.length) return;
+  const doneJob = cron.schedule("20 15 * * *", async () => {
+    const dayOfYear = getDayOfYear();
+    const groupsList = await storage.getGroups();
+    for (let g = 0; g < groupsList.length; g++) {
       const items = generateDoneSchedule(g, dayOfYear);
       for (const item of items) {
         setTimeout(async () => {
@@ -690,16 +691,15 @@ export function startScheduler() {
           );
         }, item.minuteOffset * 60 * 1000);
       }
-    }, { timezone: NIGERIA_TZ });
-    scheduledJobs.push(doneJob);
-  }
+    }
+  }, { timezone: NIGERIA_TZ });
+  scheduledJobs.push(doneJob);
 
-  for (let g = 0; g < 6; g++) {
-    const eveningJob = cron.schedule("30 16 * * *", async () => {
-      const dayOfYear = getDayOfYear();
-      const groupsList = await storage.getGroups();
-      if (g >= groupsList.length) return;
-      const items = generateEveningMessages(g, dayOfYear);
+  const eveningJob = cron.schedule("30 16 * * *", async () => {
+    const dayOfYear = getDayOfYear();
+    const groupsList = await storage.getGroups();
+    for (let g = 0; g < groupsList.length; g++) {
+      const items = generateEveningMessages(g, dayOfYear, groupsList.length);
       for (const item of items) {
         setTimeout(async () => {
           await executeScheduledMessage(
@@ -710,9 +710,9 @@ export function startScheduler() {
           );
         }, item.minuteOffset * 60 * 1000);
       }
-    }, { timezone: NIGERIA_TZ });
-    scheduledJobs.push(eveningJob);
-  }
+    }
+  }, { timezone: NIGERIA_TZ });
+  scheduledJobs.push(eveningJob);
 }
 
 export function stopScheduler() {

@@ -71,7 +71,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/schedule", async (_req, res) => {
-    const schedule = getFullScheduleForToday();
+    const schedule = await getFullScheduleForToday();
     res.json(schedule);
   });
 

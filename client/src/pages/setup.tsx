@@ -31,6 +31,8 @@ export default function Setup() {
     { name: "Group 4", groupId: "" },
     { name: "Group 5", groupId: "" },
     { name: "Group 6", groupId: "" },
+    { name: "Group 7", groupId: "" },
+    { name: "Group 8", groupId: "" },
   ]);
 
   const [saved, setSaved] = useState(false);

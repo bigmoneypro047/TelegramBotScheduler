@@ -143,7 +143,7 @@ export default function Schedule() {
                           className="text-xs"
                           data-testid={`tab-group-${block.id}-${idx}`}
                         >
-                          {groups?.[idx]?.name || `Group ${idx + 1}`}
+                          {schedule?.groupNames?.[idx] || groups?.[idx]?.name || `Group ${idx + 1}`}
                         </TabsTrigger>
                       ))}
                     </TabsList>
