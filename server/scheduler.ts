@@ -1,9 +1,43 @@
 import cron from "node-cron";
+import path from "path";
+import fs from "fs";
 import { storage } from "./storage";
 import { log } from "./index";
 import { MORNING_CHAT_MESSAGES as MORNING_CHAT_BY_LANG, EVENING_CHAT_TOPICS as EVENING_CHAT_BY_LANG, CONVERSATION_LANGUAGES, getConversationLanguageForDay } from "./messages";
 
 const NIGERIA_TZ = "Africa/Lagos";
+
+async function getGroupsWithRetry(maxRetries = 3): Promise<Awaited<ReturnType<typeof storage.getGroups>>> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await storage.getGroups();
+      if (result.length === 0 && attempt < maxRetries) {
+        log(`getGroups returned 0 results on attempt ${attempt}, retrying in 3s...`, "scheduler");
+        await sleep(3000);
+        continue;
+      }
+      return result;
+    } catch (err: any) {
+      log(`getGroups attempt ${attempt} failed: ${err.message}`, "scheduler");
+      if (attempt < maxRetries) await sleep(3000);
+    }
+  }
+  return [];
+}
+
+function getPythonPath(): string {
+  const candidates = [
+    path.join(process.cwd(), ".pythonlibs", "bin", "python3"),
+    "/home/runner/workspace/.pythonlibs/bin/python3",
+    "python3",
+  ];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {}
+  }
+  return "python3";
+}
 
 const LANGUAGES = ["English", "Spanish", "French", "Arabic", "Filipino", "Indonesian", "Urdu"];
 
@@ -339,7 +373,8 @@ async function sendUserbotMessage(sessionString: string, apiId: string, apiHash:
       const { execFile } = await import("child_process");
       const { promisify } = await import("util");
       const execFileAsync = promisify(execFile);
-      const { stdout } = await execFileAsync("python3", [
+      const pythonBin = getPythonPath();
+      const { stdout } = await execFileAsync(pythonBin, [
         "server/telegram_sender.py", "send",
         sessionString, apiId, apiHash, chatId, message
       ], { timeout: 60000 });
@@ -477,7 +512,9 @@ async function checkPythonAvailable(): Promise<boolean> {
     const { execFile } = await import("child_process");
     const { promisify } = await import("util");
     const execFileAsync = promisify(execFile);
-    const { stdout } = await execFileAsync("python3", ["-c", "from telethon.sync import TelegramClient; print('OK')"], { timeout: 15000 });
+    const pythonBin = getPythonPath();
+    log(`Python path resolved to: ${pythonBin}`, "scheduler");
+    const { stdout } = await execFileAsync(pythonBin, ["-c", "from telethon.sync import TelegramClient; print('OK')"], { timeout: 15000 });
     return stdout.trim() === "OK";
   } catch (err: any) {
     log(`Python3/Telethon check FAILED: ${err.message}`, "scheduler");
@@ -503,7 +540,7 @@ export function startScheduler() {
     try {
       log("=== MAIN BOT MESSAGE TRIGGERED ===", "scheduler");
       const message = getMainBotMessageForToday();
-      const groupsList = await storage.getGroups();
+      const groupsList = await getGroupsWithRetry();
       log(`Main bot: sending to ${groupsList.length} groups`, "scheduler");
       for (const group of groupsList) {
         await sendOneMessage("Main Bot", group.name, message, "main_bot_8:10am");
@@ -519,7 +556,7 @@ export function startScheduler() {
     try {
       log("=== MORNING CHAT TRIGGERED ===", "scheduler");
       const dayOfYear = getDayOfYear();
-      const groupsList = await storage.getGroups();
+      const groupsList = await getGroupsWithRetry();
       const activeBots = await getActiveBotIndices();
       log(`Morning chat: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
 
@@ -558,7 +595,7 @@ export function startScheduler() {
       try {
         log(`=== READY WINDOW ${w + 1} TRIGGERED ===`, "scheduler");
         const dayOfYear = getDayOfYear();
-        const groupsList = await storage.getGroups();
+        const groupsList = await getGroupsWithRetry();
         const activeBots = await getActiveBotIndices();
         log(`Ready window ${w + 1}: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
 
@@ -596,7 +633,7 @@ export function startScheduler() {
     try {
       log("=== DONE SESSION TRIGGERED ===", "scheduler");
       const dayOfYear = getDayOfYear();
-      const groupsList = await storage.getGroups();
+      const groupsList = await getGroupsWithRetry();
       const activeBots = await getActiveBotIndices();
       log(`Done session: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
 
@@ -633,7 +670,7 @@ export function startScheduler() {
     try {
       log("=== EVENING CHAT TRIGGERED ===", "scheduler");
       const dayOfYear = getDayOfYear();
-      const groupsList = await storage.getGroups();
+      const groupsList = await getGroupsWithRetry();
       const activeBots = await getActiveBotIndices();
       log(`Evening chat: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
 
@@ -690,7 +727,7 @@ export async function triggerReadyWindowNow(): Promise<string> {
   try {
     log("=== MANUAL READY WINDOW TEST TRIGGERED ===", "scheduler");
     const dayOfYear = getDayOfYear();
-    const groupsList = await storage.getGroups();
+    const groupsList = await getGroupsWithRetry();
     const activeBots = await getActiveBotIndices();
     log(`Manual test: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
     
