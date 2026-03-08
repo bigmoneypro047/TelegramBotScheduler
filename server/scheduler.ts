@@ -176,12 +176,10 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
   const seed = dayOfYear * 100 + groupIndex * 37;
   const shuffled = shuffleArray(allMessages, seed);
 
-  const totalGroups = Math.max(groupCount, 1);
-  const messagesPerGroup = Math.floor(shuffled.length / totalGroups);
-  const startIdx = groupIndex * messagesPerGroup;
-  const groupMessages = shuffled.slice(startIdx, startIdx + messagesPerGroup);
-
   const totalMinutes = 150;
+  const maxMessages = Math.floor(totalMinutes / 10) + 1;
+  const groupMessages = shuffled.slice(0, Math.min(maxMessages, shuffled.length));
+
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
   let currentMinute = 0;
 
