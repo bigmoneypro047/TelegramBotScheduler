@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { startScheduler, stopScheduler, getSchedulerStatus, getFullScheduleForToday } from "./scheduler";
+import { startScheduler, stopScheduler, getSchedulerStatus, getFullScheduleForToday, triggerReadyWindowNow } from "./scheduler";
 import { getWatchdogStatus } from "./watchdog";
 
 export async function registerRoutes(
@@ -306,6 +306,15 @@ export async function registerRoutes(
         status: "sent",
       });
       res.json({ success: true, bot: bot.name, group: group.name });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/trigger-ready-test", async (_req, res) => {
+    try {
+      const result = await triggerReadyWindowNow();
+      res.json({ success: true, result });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

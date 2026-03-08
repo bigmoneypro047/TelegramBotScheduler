@@ -457,6 +457,26 @@ async function safeExecuteScheduledMessage(botName: string, groupName: string, m
   }
 }
 
+async function dispatchStaggeredMessages(
+  items: { botIndex: number; message: string; minuteOffset: number }[],
+  groupName: string,
+  period: string
+): Promise<void> {
+  let lastOffset = 0;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const waitMs = (item.minuteOffset - lastOffset) * 60 * 1000;
+    if (waitMs > 0) {
+      log(`[${period}] Waiting ${waitMs / 1000}s before next message...`, "scheduler");
+      await sleep(waitMs);
+    }
+    lastOffset = item.minuteOffset;
+    const botName = `Userbot ${item.botIndex + 1}`;
+    log(`[${period}] Sending: ${botName} → ${groupName} (offset=${item.minuteOffset}min)`, "scheduler");
+    await safeExecuteScheduledMessage(botName, groupName, item.message, period);
+  }
+}
+
 export function startScheduler() {
   if (isSchedulerRunning) return;
   isSchedulerRunning = true;
@@ -468,33 +488,39 @@ export function startScheduler() {
   scheduledJobs.push(heartbeatJob);
 
   const mainBotJob = cron.schedule("10 8 * * *", async () => {
-    log("=== MAIN BOT MESSAGE TRIGGERED ===", "scheduler");
-    const message = getMainBotMessageForToday();
-    const groupsList = await storage.getGroups();
-    for (const group of groupsList) {
-      await safeExecuteScheduledMessage("Main Bot", group.name, message, "main_bot_8:10am");
+    try {
+      log("=== MAIN BOT MESSAGE TRIGGERED ===", "scheduler");
+      const message = getMainBotMessageForToday();
+      const groupsList = await storage.getGroups();
+      log(`Main bot: sending to ${groupsList.length} groups, message="${message.substring(0, 50)}..."`, "scheduler");
+      for (const group of groupsList) {
+        log(`Main bot: sending to ${group.name}...`, "scheduler");
+        await safeExecuteScheduledMessage("Main Bot", group.name, message, "main_bot_8:10am");
+      }
+      log("=== MAIN BOT MESSAGE COMPLETE ===", "scheduler");
+    } catch (err: any) {
+      log(`CRITICAL: Main bot cron handler crashed: ${err.message}\n${err.stack}`, "scheduler");
     }
-    log("=== MAIN BOT MESSAGE COMPLETE ===", "scheduler");
   }, { timezone: NIGERIA_TZ });
   scheduledJobs.push(mainBotJob);
 
   const morningJob = cron.schedule("0 7 * * *", async () => {
-    log("=== MORNING CHAT TRIGGERED ===", "scheduler");
-    const dayOfYear = getDayOfYear();
-    const groupsList = await storage.getGroups();
-    const activeBots = await getActiveBotIndices();
-    for (let g = 0; g < groupsList.length; g++) {
-      const items = generateMorningChatSchedule(g, dayOfYear, activeBots);
-      for (const item of items) {
-        setTimeout(async () => {
-          await safeExecuteScheduledMessage(
-            `Userbot ${item.botIndex + 1}`,
-            groupsList[g].name,
-            item.message,
-            "morning_chat"
-          );
-        }, item.minuteOffset * 60 * 1000);
+    try {
+      log("=== MORNING CHAT TRIGGERED ===", "scheduler");
+      const dayOfYear = getDayOfYear();
+      const groupsList = await storage.getGroups();
+      const activeBots = await getActiveBotIndices();
+      log(`Morning chat: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}], day=${dayOfYear}`, "scheduler");
+      for (let g = 0; g < groupsList.length; g++) {
+        const items = generateMorningChatSchedule(g, dayOfYear, activeBots);
+        log(`Morning chat: group ${groupsList[g].name} — ${items.length} messages to send`, "scheduler");
+        dispatchStaggeredMessages(items, groupsList[g].name, "morning_chat").catch(err => {
+          log(`Morning chat dispatch error for ${groupsList[g].name}: ${err.message}`, "scheduler");
+        });
       }
+      log("=== MORNING CHAT DISPATCHED ===", "scheduler");
+    } catch (err: any) {
+      log(`CRITICAL: Morning chat cron handler crashed: ${err.message}\n${err.stack}`, "scheduler");
     }
   }, { timezone: NIGERIA_TZ });
   scheduledJobs.push(morningJob);
@@ -502,65 +528,65 @@ export function startScheduler() {
   for (let w = 0; w < READY_WINDOWS.length; w++) {
     const window = READY_WINDOWS[w];
     const readyJob = cron.schedule(`${window.startMin} ${window.startHour} * * *`, async () => {
-      log(`=== READY WINDOW ${w + 1} TRIGGERED ===`, "scheduler");
-      const dayOfYear = getDayOfYear();
-      const groupsList = await storage.getGroups();
-      const activeBots = await getActiveBotIndices();
-      for (let g = 0; g < groupsList.length; g++) {
-        const items = generateReadySchedule(w, g, dayOfYear, activeBots);
-        for (const item of items) {
-          setTimeout(async () => {
-            await safeExecuteScheduledMessage(
-              `Userbot ${item.botIndex + 1}`,
-              groupsList[g].name,
-              item.message,
-              `ready_window_${w + 1}`
-            );
-          }, item.minuteOffset * 60 * 1000);
+      try {
+        log(`=== READY WINDOW ${w + 1} TRIGGERED ===`, "scheduler");
+        const dayOfYear = getDayOfYear();
+        const groupsList = await storage.getGroups();
+        const activeBots = await getActiveBotIndices();
+        log(`Ready window ${w + 1}: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
+        for (let g = 0; g < groupsList.length; g++) {
+          const items = generateReadySchedule(w, g, dayOfYear, activeBots);
+          log(`Ready window ${w + 1}: group ${groupsList[g].name} — ${items.length} messages`, "scheduler");
+          dispatchStaggeredMessages(items, groupsList[g].name, `ready_window_${w + 1}`).catch(err => {
+            log(`Ready window ${w + 1} dispatch error for ${groupsList[g].name}: ${err.message}`, "scheduler");
+          });
         }
+        log(`=== READY WINDOW ${w + 1} DISPATCHED ===`, "scheduler");
+      } catch (err: any) {
+        log(`CRITICAL: Ready window ${w + 1} cron handler crashed: ${err.message}\n${err.stack}`, "scheduler");
       }
     }, { timezone: NIGERIA_TZ });
     scheduledJobs.push(readyJob);
   }
 
   const doneJob = cron.schedule("20 15 * * *", async () => {
-    log("=== DONE SESSION TRIGGERED ===", "scheduler");
-    const dayOfYear = getDayOfYear();
-    const groupsList = await storage.getGroups();
-    const activeBots = await getActiveBotIndices();
-    for (let g = 0; g < groupsList.length; g++) {
-      const items = generateDoneSchedule(g, dayOfYear, activeBots);
-      for (const item of items) {
-        setTimeout(async () => {
-          await safeExecuteScheduledMessage(
-            `Userbot ${item.botIndex + 1}`,
-            groupsList[g].name,
-            item.message,
-            "done_session"
-          );
-        }, item.minuteOffset * 60 * 1000);
+    try {
+      log("=== DONE SESSION TRIGGERED ===", "scheduler");
+      const dayOfYear = getDayOfYear();
+      const groupsList = await storage.getGroups();
+      const activeBots = await getActiveBotIndices();
+      log(`Done session: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
+      for (let g = 0; g < groupsList.length; g++) {
+        const items = generateDoneSchedule(g, dayOfYear, activeBots);
+        log(`Done session: group ${groupsList[g].name} — ${items.length} messages`, "scheduler");
+        dispatchStaggeredMessages(items, groupsList[g].name, "done_session").catch(err => {
+          log(`Done session dispatch error for ${groupsList[g].name}: ${err.message}`, "scheduler");
+        });
       }
+      log("=== DONE SESSION DISPATCHED ===", "scheduler");
+    } catch (err: any) {
+      log(`CRITICAL: Done session cron handler crashed: ${err.message}\n${err.stack}`, "scheduler");
     }
   }, { timezone: NIGERIA_TZ });
   scheduledJobs.push(doneJob);
 
   const eveningJob = cron.schedule("30 16 * * *", async () => {
-    log("=== EVENING CHAT TRIGGERED ===", "scheduler");
-    const dayOfYear = getDayOfYear();
-    const groupsList = await storage.getGroups();
-    const activeBots = await getActiveBotIndices();
-    for (let g = 0; g < groupsList.length; g++) {
-      const items = generateEveningMessages(g, dayOfYear, groupsList.length, activeBots);
-      for (const item of items) {
-        setTimeout(async () => {
-          await safeExecuteScheduledMessage(
-            `Userbot ${item.botIndex + 1}`,
-            groupsList[g].name,
-            item.message,
-            "evening_chat"
-          );
-        }, item.minuteOffset * 60 * 1000);
+    try {
+      log("=== EVENING CHAT TRIGGERED ===", "scheduler");
+      const dayOfYear = getDayOfYear();
+      const groupsList = await storage.getGroups();
+      const activeBots = await getActiveBotIndices();
+      log(`Evening chat: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
+      for (let g = 0; g < groupsList.length; g++) {
+        const items = generateEveningMessages(g, dayOfYear, groupsList.length, activeBots);
+        log(`Evening chat: group ${groupsList[g].name} — ${items.length} messages`, "scheduler");
+        dispatchStaggeredMessages(items, groupsList[g].name, "evening_chat").catch(err => {
+          log(`Evening chat dispatch error for ${groupsList[g].name}: ${err.message}`, "scheduler");
+        });
       }
+      log("=== EVENING CHAT DISPATCHED ===", "scheduler");
+    } catch (err: any) {
+      log(`CRITICAL: Evening chat cron handler crashed: ${err.message}\n${err.stack}`, "scheduler");
     }
   }, { timezone: NIGERIA_TZ });
   scheduledJobs.push(eveningJob);
@@ -583,6 +609,34 @@ export function stopScheduler() {
   }
   isSchedulerRunning = false;
   log("Scheduler stopped", "scheduler");
+}
+
+export async function triggerReadyWindowNow(): Promise<string> {
+  try {
+    log("=== MANUAL READY WINDOW TEST TRIGGERED ===", "scheduler");
+    const dayOfYear = getDayOfYear();
+    const groupsList = await storage.getGroups();
+    const activeBots = await getActiveBotIndices();
+    log(`Manual test: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
+    
+    if (groupsList.length === 0) return "No groups configured";
+    
+    const group = groupsList[0];
+    const items = generateReadySchedule(0, 0, dayOfYear, activeBots);
+    log(`Manual test: group ${group.name} — ${items.length} messages`, "scheduler");
+    
+    for (const item of items) {
+      const botName = `Userbot ${item.botIndex + 1}`;
+      log(`Manual test: sending ${botName} → ${group.name}`, "scheduler");
+      await safeExecuteScheduledMessage(botName, group.name, item.message, "manual_test");
+    }
+    
+    log("=== MANUAL READY WINDOW TEST COMPLETE ===", "scheduler");
+    return `Sent ${items.length} messages to ${group.name}`;
+  } catch (err: any) {
+    log(`Manual test FAILED: ${err.message}\n${err.stack}`, "scheduler");
+    return `Error: ${err.message}`;
+  }
 }
 
 export function getSchedulerStatus() {
