@@ -305,37 +305,61 @@ export async function getFullScheduleForToday(): Promise<any> {
   return schedule;
 }
 
+const MAX_RETRIES = 3;
+const RETRY_DELAYS = [5000, 15000, 30000];
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function sendTelegramBotMessage(token: string, chatId: string, message: string): Promise<boolean> {
-  try {
-    const TelegramBot = (await import("node-telegram-bot-api")).default;
-    const bot = new TelegramBot(token, { polling: false });
-    await bot.sendMessage(chatId, message);
-    return true;
-  } catch (err: any) {
-    log(`Failed to send bot message: ${err.message}`, "telegram");
-    return false;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const TelegramBot = (await import("node-telegram-bot-api")).default;
+      const bot = new TelegramBot(token, { polling: false });
+      await bot.sendMessage(chatId, message);
+      if (attempt > 0) log(`Bot message succeeded on retry #${attempt}`, "telegram");
+      return true;
+    } catch (err: any) {
+      log(`Bot message attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ${err.message}`, "telegram");
+      if (attempt < MAX_RETRIES) {
+        const delay = RETRY_DELAYS[attempt] || 30000;
+        log(`Retrying in ${delay / 1000}s...`, "telegram");
+        await sleep(delay);
+      }
+    }
   }
+  log(`Bot message FAILED after ${MAX_RETRIES + 1} attempts`, "telegram");
+  return false;
 }
 
 async function sendUserbotMessage(sessionString: string, apiId: string, apiHash: string, chatId: string, message: string): Promise<boolean> {
-  try {
-    const { execFile } = await import("child_process");
-    const { promisify } = await import("util");
-    const execFileAsync = promisify(execFile);
-    const { stdout } = await execFileAsync("python3", [
-      "server/telegram_sender.py", "send",
-      sessionString, apiId, apiHash, chatId, message
-    ], { timeout: 30000 });
-    const result = JSON.parse(stdout.trim());
-    if (result.success) {
-      return true;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const { execFile } = await import("child_process");
+      const { promisify } = await import("util");
+      const execFileAsync = promisify(execFile);
+      const { stdout } = await execFileAsync("python3", [
+        "server/telegram_sender.py", "send",
+        sessionString, apiId, apiHash, chatId, message
+      ], { timeout: 60000 });
+      const result = JSON.parse(stdout.trim());
+      if (result.success) {
+        if (attempt > 0) log(`Userbot message succeeded on retry #${attempt}`, "telegram");
+        return true;
+      }
+      log(`Userbot send attempt ${attempt + 1} failed: ${result.error}`, "telegram");
+    } catch (err: any) {
+      log(`Userbot message attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ${err.message}`, "telegram");
     }
-    log(`Userbot send failed: ${result.error}`, "telegram");
-    return false;
-  } catch (err: any) {
-    log(`Failed to send userbot message: ${err.message}`, "telegram");
-    return false;
+    if (attempt < MAX_RETRIES) {
+      const delay = RETRY_DELAYS[attempt] || 30000;
+      log(`Retrying in ${delay / 1000}s...`, "telegram");
+      await sleep(delay);
+    }
   }
+  log(`Userbot message FAILED after ${MAX_RETRIES + 1} attempts`, "telegram");
+  return false;
 }
 
 async function executeScheduledMessage(botName: string, groupName: string, message: string, period: string) {
@@ -382,21 +406,42 @@ async function executeScheduledMessage(botName: string, groupName: string, messa
   }
 }
 
+let lastHeartbeat: Date | null = null;
+
+async function safeExecuteScheduledMessage(botName: string, groupName: string, message: string, period: string) {
+  try {
+    await executeScheduledMessage(botName, groupName, message, period);
+  } catch (err: any) {
+    log(`CRITICAL: executeScheduledMessage crashed for ${botName}/${groupName}: ${err.message}`, "scheduler");
+    try {
+      await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: "error_crash" });
+    } catch (_) {}
+  }
+}
+
 export function startScheduler() {
   if (isSchedulerRunning) return;
   isSchedulerRunning = true;
-  log("Scheduler started", "scheduler");
+  log("Scheduler started with retry + watchdog protection", "scheduler");
+
+  const heartbeatJob = cron.schedule("* * * * *", () => {
+    lastHeartbeat = getNigeriaDate();
+  }, { timezone: NIGERIA_TZ });
+  scheduledJobs.push(heartbeatJob);
 
   const mainBotJob = cron.schedule("10 8 * * *", async () => {
+    log("=== MAIN BOT MESSAGE TRIGGERED ===", "scheduler");
     const message = getMainBotMessageForToday();
     const groupsList = await storage.getGroups();
     for (const group of groupsList) {
-      await executeScheduledMessage("Main Bot", group.name, message, "main_bot_8:10am");
+      await safeExecuteScheduledMessage("Main Bot", group.name, message, "main_bot_8:10am");
     }
+    log("=== MAIN BOT MESSAGE COMPLETE ===", "scheduler");
   }, { timezone: NIGERIA_TZ });
   scheduledJobs.push(mainBotJob);
 
   const morningJob = cron.schedule("0 7 * * *", async () => {
+    log("=== MORNING CHAT TRIGGERED ===", "scheduler");
     const dayOfYear = getDayOfYear();
     const groupsList = await storage.getGroups();
     const activeBots = await getActiveBotIndices();
@@ -404,7 +449,7 @@ export function startScheduler() {
       const items = generateMorningChatSchedule(g, dayOfYear, activeBots);
       for (const item of items) {
         setTimeout(async () => {
-          await executeScheduledMessage(
+          await safeExecuteScheduledMessage(
             `Userbot ${item.botIndex + 1}`,
             groupsList[g].name,
             item.message,
@@ -419,6 +464,7 @@ export function startScheduler() {
   for (let w = 0; w < READY_WINDOWS.length; w++) {
     const window = READY_WINDOWS[w];
     const readyJob = cron.schedule(`${window.startMin} ${window.startHour} * * *`, async () => {
+      log(`=== READY WINDOW ${w + 1} TRIGGERED ===`, "scheduler");
       const dayOfYear = getDayOfYear();
       const groupsList = await storage.getGroups();
       const activeBots = await getActiveBotIndices();
@@ -426,7 +472,7 @@ export function startScheduler() {
         const items = generateReadySchedule(w, g, dayOfYear, activeBots);
         for (const item of items) {
           setTimeout(async () => {
-            await executeScheduledMessage(
+            await safeExecuteScheduledMessage(
               `Userbot ${item.botIndex + 1}`,
               groupsList[g].name,
               item.message,
@@ -440,6 +486,7 @@ export function startScheduler() {
   }
 
   const doneJob = cron.schedule("20 15 * * *", async () => {
+    log("=== DONE SESSION TRIGGERED ===", "scheduler");
     const dayOfYear = getDayOfYear();
     const groupsList = await storage.getGroups();
     const activeBots = await getActiveBotIndices();
@@ -447,7 +494,7 @@ export function startScheduler() {
       const items = generateDoneSchedule(g, dayOfYear, activeBots);
       for (const item of items) {
         setTimeout(async () => {
-          await executeScheduledMessage(
+          await safeExecuteScheduledMessage(
             `Userbot ${item.botIndex + 1}`,
             groupsList[g].name,
             item.message,
@@ -460,6 +507,7 @@ export function startScheduler() {
   scheduledJobs.push(doneJob);
 
   const eveningJob = cron.schedule("30 16 * * *", async () => {
+    log("=== EVENING CHAT TRIGGERED ===", "scheduler");
     const dayOfYear = getDayOfYear();
     const groupsList = await storage.getGroups();
     const activeBots = await getActiveBotIndices();
@@ -467,7 +515,7 @@ export function startScheduler() {
       const items = generateEveningMessages(g, dayOfYear, groupsList.length, activeBots);
       for (const item of items) {
         setTimeout(async () => {
-          await executeScheduledMessage(
+          await safeExecuteScheduledMessage(
             `Userbot ${item.botIndex + 1}`,
             groupsList[g].name,
             item.message,
@@ -478,6 +526,8 @@ export function startScheduler() {
     }
   }, { timezone: NIGERIA_TZ });
   scheduledJobs.push(eveningJob);
+
+  log(`Scheduled ${scheduledJobs.length} cron jobs (including heartbeat)`, "scheduler");
 }
 
 export function stopScheduler() {
@@ -494,6 +544,9 @@ export function getSchedulerStatus() {
     isRunning: isSchedulerRunning,
     jobCount: scheduledJobs.length,
     language: getLanguageForToday(),
+    conversationLanguage: getConversationLanguageForDay(getDayOfYear()),
     mainBotMessage: getMainBotMessageForToday(),
+    lastHeartbeat: lastHeartbeat?.toISOString() || null,
+    retryConfig: { maxRetries: MAX_RETRIES, delaysMs: RETRY_DELAYS },
   };
 }

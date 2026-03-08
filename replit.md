@@ -41,8 +41,18 @@ A web dashboard for managing automated Telegram messaging across 5 groups using 
 - 3:20-3:40 PM: "Done" messages (5 min gaps)
 - 4:30-7:00 PM: Evening discussion (10 min gaps, unique per group)
 
-## Languages (Daily Rotation)
-English, Spanish, French, Arabic, Filipino, Indonesian, Urdu
+## Languages
+- **Main bot message rotation (7 languages)**: English, Spanish, French, Arabic, Filipino, Indonesian, Urdu
+- **Morning/Evening conversation rotation (5 languages)**: English, Spanish, Arabic, Indonesian, Filipino (5-day cycle via `dayOfYear % 5`)
+- Full translations in `server/messages.ts`
+
+## Reliability System
+- **Self-ping keepalive**: Pings `/api/health` every 4 minutes to prevent sleep (`server/watchdog.ts`)
+- **Watchdog monitor**: Checks server health every 5 minutes, logs uptime stats
+- **Retry logic**: All Telegram sends retry up to 3 times (delays: 5s, 15s, 30s)
+- **Crash protection**: `safeExecuteScheduledMessage` wraps all sends with try/catch
+- **Heartbeat**: Cron runs every minute to confirm scheduler is alive
+- **Endpoints**: `/api/health` (full status), `/api/watchdog` (watchdog stats)
 
 ## Technical Notes
 - Scheduler dynamically fetches active bot indices, skipping inactive/frozen userbots

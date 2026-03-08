@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { startScheduler, stopScheduler, getSchedulerStatus, getFullScheduleForToday } from "./scheduler";
+import { getWatchdogStatus } from "./watchdog";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -308,6 +309,21 @@ export async function registerRoutes(
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  app.get("/api/health", async (_req, res) => {
+    const schedulerStatus = getSchedulerStatus();
+    const watchdog = getWatchdogStatus();
+    res.json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      scheduler: schedulerStatus,
+      watchdog,
+    });
+  });
+
+  app.get("/api/watchdog", async (_req, res) => {
+    res.json(getWatchdogStatus());
   });
 
   return httpServer;
