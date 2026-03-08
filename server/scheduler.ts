@@ -457,23 +457,31 @@ async function safeExecuteScheduledMessage(botName: string, groupName: string, m
   }
 }
 
-async function dispatchStaggeredMessages(
-  items: { botIndex: number; message: string; minuteOffset: number }[],
+async function sendOneMessage(
+  botName: string,
   groupName: string,
+  message: string,
   period: string
 ): Promise<void> {
-  let lastOffset = 0;
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    const waitMs = (item.minuteOffset - lastOffset) * 60 * 1000;
-    if (waitMs > 0) {
-      log(`[${period}] Waiting ${waitMs / 1000}s before next message...`, "scheduler");
-      await sleep(waitMs);
-    }
-    lastOffset = item.minuteOffset;
-    const botName = `Userbot ${item.botIndex + 1}`;
-    log(`[${period}] Sending: ${botName} → ${groupName} (offset=${item.minuteOffset}min)`, "scheduler");
-    await safeExecuteScheduledMessage(botName, groupName, item.message, period);
+  log(`[${period}] SEND START: ${botName} → ${groupName}`, "scheduler");
+  try {
+    await safeExecuteScheduledMessage(botName, groupName, message, period);
+    log(`[${period}] SEND DONE: ${botName} → ${groupName}`, "scheduler");
+  } catch (err: any) {
+    log(`[${period}] SEND FAILED: ${botName} → ${groupName}: ${err.message}`, "scheduler");
+  }
+}
+
+async function checkPythonAvailable(): Promise<boolean> {
+  try {
+    const { execFile } = await import("child_process");
+    const { promisify } = await import("util");
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync("python3", ["-c", "from telethon.sync import TelegramClient; print('OK')"], { timeout: 15000 });
+    return stdout.trim() === "OK";
+  } catch (err: any) {
+    log(`Python3/Telethon check FAILED: ${err.message}`, "scheduler");
+    return false;
   }
 }
 
@@ -481,6 +489,10 @@ export function startScheduler() {
   if (isSchedulerRunning) return;
   isSchedulerRunning = true;
   log("Scheduler started with retry + watchdog protection", "scheduler");
+
+  checkPythonAvailable().then(ok => {
+    log(`Python3/Telethon available: ${ok}`, "scheduler");
+  });
 
   const heartbeatJob = cron.schedule("* * * * *", () => {
     lastHeartbeat = getNigeriaDate();
@@ -492,14 +504,13 @@ export function startScheduler() {
       log("=== MAIN BOT MESSAGE TRIGGERED ===", "scheduler");
       const message = getMainBotMessageForToday();
       const groupsList = await storage.getGroups();
-      log(`Main bot: sending to ${groupsList.length} groups, message="${message.substring(0, 50)}..."`, "scheduler");
+      log(`Main bot: sending to ${groupsList.length} groups`, "scheduler");
       for (const group of groupsList) {
-        log(`Main bot: sending to ${group.name}...`, "scheduler");
-        await safeExecuteScheduledMessage("Main Bot", group.name, message, "main_bot_8:10am");
+        await sendOneMessage("Main Bot", group.name, message, "main_bot_8:10am");
       }
       log("=== MAIN BOT MESSAGE COMPLETE ===", "scheduler");
     } catch (err: any) {
-      log(`CRITICAL: Main bot cron handler crashed: ${err.message}\n${err.stack}`, "scheduler");
+      log(`CRITICAL: Main bot crashed: ${err.message}\n${err.stack}`, "scheduler");
     }
   }, { timezone: NIGERIA_TZ });
   scheduledJobs.push(mainBotJob);
@@ -510,17 +521,33 @@ export function startScheduler() {
       const dayOfYear = getDayOfYear();
       const groupsList = await storage.getGroups();
       const activeBots = await getActiveBotIndices();
-      log(`Morning chat: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}], day=${dayOfYear}`, "scheduler");
+      log(`Morning chat: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
+
+      const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
       for (let g = 0; g < groupsList.length; g++) {
         const items = generateMorningChatSchedule(g, dayOfYear, activeBots);
-        log(`Morning chat: group ${groupsList[g].name} — ${items.length} messages to send`, "scheduler");
-        dispatchStaggeredMessages(items, groupsList[g].name, "morning_chat").catch(err => {
-          log(`Morning chat dispatch error for ${groupsList[g].name}: ${err.message}`, "scheduler");
-        });
+        for (const item of items) {
+          allItems.push({
+            botName: `Userbot ${item.botIndex + 1}`,
+            groupName: groupsList[g].name,
+            message: item.message,
+            delayMs: item.minuteOffset * 60 * 1000,
+          });
+        }
       }
-      log("=== MORNING CHAT DISPATCHED ===", "scheduler");
+      allItems.sort((a, b) => a.delayMs - b.delayMs);
+      log(`Morning chat: ${allItems.length} total messages queued`, "scheduler");
+
+      let lastDelay = 0;
+      for (const item of allItems) {
+        const wait = item.delayMs - lastDelay;
+        if (wait > 0) await sleep(wait);
+        lastDelay = item.delayMs;
+        await sendOneMessage(item.botName, item.groupName, item.message, "morning_chat");
+      }
+      log("=== MORNING CHAT COMPLETE ===", "scheduler");
     } catch (err: any) {
-      log(`CRITICAL: Morning chat cron handler crashed: ${err.message}\n${err.stack}`, "scheduler");
+      log(`CRITICAL: Morning chat crashed: ${err.message}\n${err.stack}`, "scheduler");
     }
   }, { timezone: NIGERIA_TZ });
   scheduledJobs.push(morningJob);
@@ -534,16 +561,32 @@ export function startScheduler() {
         const groupsList = await storage.getGroups();
         const activeBots = await getActiveBotIndices();
         log(`Ready window ${w + 1}: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
+
+        const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
         for (let g = 0; g < groupsList.length; g++) {
           const items = generateReadySchedule(w, g, dayOfYear, activeBots);
-          log(`Ready window ${w + 1}: group ${groupsList[g].name} — ${items.length} messages`, "scheduler");
-          dispatchStaggeredMessages(items, groupsList[g].name, `ready_window_${w + 1}`).catch(err => {
-            log(`Ready window ${w + 1} dispatch error for ${groupsList[g].name}: ${err.message}`, "scheduler");
-          });
+          for (const item of items) {
+            allItems.push({
+              botName: `Userbot ${item.botIndex + 1}`,
+              groupName: groupsList[g].name,
+              message: item.message,
+              delayMs: item.minuteOffset * 60 * 1000,
+            });
+          }
         }
-        log(`=== READY WINDOW ${w + 1} DISPATCHED ===`, "scheduler");
+        allItems.sort((a, b) => a.delayMs - b.delayMs);
+        log(`Ready window ${w + 1}: ${allItems.length} total messages queued`, "scheduler");
+
+        let lastDelay = 0;
+        for (const item of allItems) {
+          const wait = item.delayMs - lastDelay;
+          if (wait > 0) await sleep(wait);
+          lastDelay = item.delayMs;
+          await sendOneMessage(item.botName, item.groupName, item.message, `ready_window_${w + 1}`);
+        }
+        log(`=== READY WINDOW ${w + 1} COMPLETE ===`, "scheduler");
       } catch (err: any) {
-        log(`CRITICAL: Ready window ${w + 1} cron handler crashed: ${err.message}\n${err.stack}`, "scheduler");
+        log(`CRITICAL: Ready window ${w + 1} crashed: ${err.message}\n${err.stack}`, "scheduler");
       }
     }, { timezone: NIGERIA_TZ });
     scheduledJobs.push(readyJob);
@@ -556,16 +599,32 @@ export function startScheduler() {
       const groupsList = await storage.getGroups();
       const activeBots = await getActiveBotIndices();
       log(`Done session: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
+
+      const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
       for (let g = 0; g < groupsList.length; g++) {
         const items = generateDoneSchedule(g, dayOfYear, activeBots);
-        log(`Done session: group ${groupsList[g].name} — ${items.length} messages`, "scheduler");
-        dispatchStaggeredMessages(items, groupsList[g].name, "done_session").catch(err => {
-          log(`Done session dispatch error for ${groupsList[g].name}: ${err.message}`, "scheduler");
-        });
+        for (const item of items) {
+          allItems.push({
+            botName: `Userbot ${item.botIndex + 1}`,
+            groupName: groupsList[g].name,
+            message: item.message,
+            delayMs: item.minuteOffset * 60 * 1000,
+          });
+        }
       }
-      log("=== DONE SESSION DISPATCHED ===", "scheduler");
+      allItems.sort((a, b) => a.delayMs - b.delayMs);
+      log(`Done session: ${allItems.length} total messages queued`, "scheduler");
+
+      let lastDelay = 0;
+      for (const item of allItems) {
+        const wait = item.delayMs - lastDelay;
+        if (wait > 0) await sleep(wait);
+        lastDelay = item.delayMs;
+        await sendOneMessage(item.botName, item.groupName, item.message, "done_session");
+      }
+      log("=== DONE SESSION COMPLETE ===", "scheduler");
     } catch (err: any) {
-      log(`CRITICAL: Done session cron handler crashed: ${err.message}\n${err.stack}`, "scheduler");
+      log(`CRITICAL: Done session crashed: ${err.message}\n${err.stack}`, "scheduler");
     }
   }, { timezone: NIGERIA_TZ });
   scheduledJobs.push(doneJob);
@@ -577,16 +636,32 @@ export function startScheduler() {
       const groupsList = await storage.getGroups();
       const activeBots = await getActiveBotIndices();
       log(`Evening chat: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
+
+      const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
       for (let g = 0; g < groupsList.length; g++) {
         const items = generateEveningMessages(g, dayOfYear, groupsList.length, activeBots);
-        log(`Evening chat: group ${groupsList[g].name} — ${items.length} messages`, "scheduler");
-        dispatchStaggeredMessages(items, groupsList[g].name, "evening_chat").catch(err => {
-          log(`Evening chat dispatch error for ${groupsList[g].name}: ${err.message}`, "scheduler");
-        });
+        for (const item of items) {
+          allItems.push({
+            botName: `Userbot ${item.botIndex + 1}`,
+            groupName: groupsList[g].name,
+            message: item.message,
+            delayMs: item.minuteOffset * 60 * 1000,
+          });
+        }
       }
-      log("=== EVENING CHAT DISPATCHED ===", "scheduler");
+      allItems.sort((a, b) => a.delayMs - b.delayMs);
+      log(`Evening chat: ${allItems.length} total messages queued`, "scheduler");
+
+      let lastDelay = 0;
+      for (const item of allItems) {
+        const wait = item.delayMs - lastDelay;
+        if (wait > 0) await sleep(wait);
+        lastDelay = item.delayMs;
+        await sendOneMessage(item.botName, item.groupName, item.message, "evening_chat");
+      }
+      log("=== EVENING CHAT COMPLETE ===", "scheduler");
     } catch (err: any) {
-      log(`CRITICAL: Evening chat cron handler crashed: ${err.message}\n${err.stack}`, "scheduler");
+      log(`CRITICAL: Evening chat crashed: ${err.message}\n${err.stack}`, "scheduler");
     }
   }, { timezone: NIGERIA_TZ });
   scheduledJobs.push(eveningJob);
