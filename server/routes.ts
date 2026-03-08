@@ -144,40 +144,17 @@ export async function registerRoutes(
         { connectionRetries: 3 }
       );
 
-      let resolveCode: (code: string) => void;
-      let resolvePassword: ((pw: string) => void) | null = null;
-      const codePromise = new Promise<string>((resolve) => { resolveCode = resolve; });
+      await client.connect();
+      const result = await client.sendCode(
+        { apiId: parseInt(bot.apiId), apiHash: bot.apiHash },
+        phoneNumber
+      );
 
       loginSessions.set(req.params.id, {
         client,
         phoneNumber,
-        resolveCode: null as any,
-        resolvePassword: null as any,
-        needsPassword: false,
-        startPromise: null as any,
+        phoneCodeHash: result.phoneCodeHash,
       });
-
-      const startPromise = client.start({
-        phoneNumber: async () => phoneNumber,
-        phoneCode: async () => {
-          return new Promise<string>((resolve) => {
-            const sess = loginSessions.get(req.params.id);
-            if (sess) sess.resolveCode = resolve;
-          });
-        },
-        password: async () => {
-          const sess = loginSessions.get(req.params.id);
-          if (sess) sess.needsPassword = true;
-          return new Promise<string>((resolve) => {
-            const sess2 = loginSessions.get(req.params.id);
-            if (sess2) sess2.resolvePassword = resolve;
-          });
-        },
-        onError: (err) => console.log("[login] Error:", err.message),
-      });
-
-      const sess = loginSessions.get(req.params.id);
-      sess.startPromise = startPromise;
 
       res.json({ success: true, message: "Code sent to your phone" });
     } catch (err: any) {
@@ -193,32 +170,38 @@ export async function registerRoutes(
       }
 
       const { code, password } = req.body;
-      const { client, phoneNumber } = session;
-
-      if (session.needsPassword && password && session.resolvePassword) {
-        session.resolvePassword(password);
-        try {
-          await session.startPromise;
-        } catch (e: any) {
-          return res.status(500).json({ error: e.message });
-        }
-      } else if (code && session.resolveCode) {
-        session.resolveCode(code);
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-        if (session.needsPassword && !password) {
-          return res.status(400).json({
-            error: "Two-factor authentication is enabled. Please provide your password.",
-            needsPassword: true,
-          });
-        }
-        try {
-          await session.startPromise;
-        } catch (e: any) {
-          return res.status(500).json({ error: e.message });
-        }
-      } else {
+      if (!code) {
         return res.status(400).json({ error: "Verification code is required" });
       }
+
+      const { client, phoneNumber, phoneCodeHash } = session;
+      const { Api } = await import("telegram/tl");
+
+      try {
+        await client.invoke(
+          new Api.auth.SignIn({
+            phoneNumber,
+            phoneCodeHash,
+            phoneCode: code,
+          })
+        );
+      } catch (signInErr: any) {
+        if (signInErr.errorMessage === "SESSION_PASSWORD_NEEDED") {
+          if (!password) {
+            return res.status(400).json({
+              error: "Two-factor authentication is enabled. Please provide your password.",
+              needsPassword: true,
+            });
+          }
+          const passwordResult = await client.invoke(new Api.account.GetPassword());
+          const srpPassword = await client.computeSrpParams(passwordResult, password);
+          await client.invoke(new Api.auth.CheckPassword({ password: srpPassword }));
+        } else {
+          throw signInErr;
+        }
+      }
+
+      await client.getDialogs({ limit: 100 });
 
       const sessionString = (client.session as any).save();
       const botData = await storage.getUserbot(req.params.id);
@@ -233,6 +216,25 @@ export async function registerRoutes(
         isActive: true,
         order: botData?.order || 0,
       });
+
+      try {
+        const groupsList = await storage.getGroups();
+        if (groupsList.length > 0 && groupsList[0].groupId) {
+          const dialogs = await client.getDialogs({});
+          const targetId = parseInt(groupsList[0].groupId);
+          const dialog = dialogs.find((d: any) => {
+            const peerId = d.entity?.id;
+            if (!peerId) return false;
+            const fullId = d.isChannel || d.isGroup ? -1000000000000 - Number(peerId) : -Number(peerId);
+            return fullId === targetId;
+          });
+          if (dialog?.entity) {
+            await client.sendMessage(dialog.entity, { message: `${botData?.name || 'Userbot'} connected successfully!` });
+          }
+        }
+      } catch (testErr: any) {
+        console.log(`[login] Test send failed: ${testErr.message}`);
+      }
 
       await client.disconnect();
       loginSessions.delete(req.params.id);
