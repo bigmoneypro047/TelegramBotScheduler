@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { storage } from "./storage";
 import { log } from "./index";
+import { MORNING_CHAT_MESSAGES as MORNING_CHAT_BY_LANG, EVENING_CHAT_TOPICS as EVENING_CHAT_BY_LANG, CONVERSATION_LANGUAGES, getConversationLanguageForDay } from "./messages";
 
 const NIGERIA_TZ = "Africa/Lagos";
 
@@ -55,285 +56,9 @@ const READY_MESSAGES = [
   "I'm active",
 ];
 
-const MORNING_CHAT_MESSAGES = [
-  "Yesterday's signals were really accurate, made some good profits!",
-  "I followed the 3rd signal yesterday and got a nice return on my investment",
-  "The accuracy rate has been amazing this week, consistent profits every day",
-  "Just checked my account, the profits from last week's signals are looking great",
-  "Has anyone tried following all the signals? My win rate is over 85%",
-  "The team leader's analysis is always on point, very reliable signals",
-  "I started with a small amount and now my portfolio has grown significantly",
-  "These trading signals have changed my financial situation completely",
-  "Great results from yesterday, looking forward to today's session",
-  "The signals have been consistently profitable, very happy with the results",
-  "My friend joined last week and already made good profits from the signals",
-  "The risk management tips along with signals are really helpful",
-  "Consistency is key, and these signals deliver consistent results every day",
-  "I was skeptical at first but the profits speak for themselves",
-  "The analysis provided before each signal helps me understand the market better",
-  "Anyone else notice how accurate the entry and exit points are?",
-  "My earnings this month exceeded my expectations thanks to these signals",
-  "The support team is always helpful when I have questions about the trades",
-  "I've been following for 3 months now and my account has grown steadily",
-  "Today is going to be another profitable day, I can feel it!",
-];
 
 const DONE_MESSAGES = ["Done"];
 
-const EVENING_CHAT_TOPICS: Record<number, string[][]> = {
-  0: [
-    [
-      "Today's first signal was incredibly accurate, hit the target in just 15 minutes",
-      "I managed to earn a solid profit from the morning session alone",
-      "The team leader's market analysis this morning was spot on",
-      "My account balance has increased by 12% just this week from following signals",
-      "For anyone new here, just follow the signals precisely and you'll see results",
-      "The reward program is also a nice bonus, earned extra from team building",
-      "I've referred 3 friends already and the referral rewards are generous",
-      "Building a team has been rewarding both financially and personally",
-      "The combination of signal profits and team rewards is unbeatable",
-      "Anyone else hit their daily target today? I reached mine by the 4th signal",
-      "The accuracy today was phenomenal, almost every signal hit its target",
-      "Looking at my monthly stats, the consistency is remarkable",
-      "Team building bonuses have been a great additional income stream",
-      "My team member started earning from day one, the system really works",
-      "The leadership rewards make team building even more worthwhile",
-    ],
-    [
-      "Amazing signals today, every single one was profitable",
-      "My weekly profits have been consistently growing since I joined",
-      "The mentoring from senior team members has been invaluable",
-      "I love how transparent the trading results are shared here daily",
-      "The team building aspect adds another dimension to the earning potential",
-      "Signal accuracy this week has been outstanding, above 90%",
-      "I've been able to supplement my income significantly with these trades",
-      "The risk-reward ratio on today's signals was excellent",
-      "Glad I took the leap and joined this community, life-changing decision",
-      "My team is growing and so are the collective rewards we all earn",
-      "Each day the signals get better and the profits increase",
-      "The evening review sessions help me understand what worked and why",
-      "Referral bonuses have been an unexpected but welcome addition",
-      "Today's performance confirms why this is the best signal community",
-      "Planning to increase my trading capital based on the consistent results",
-    ],
-  ],
-  1: [
-    [
-      "The signals today were timed perfectly with market movements",
-      "I've been tracking my profits weekly and the growth curve is impressive",
-      "The community support here makes trading so much easier and less stressful",
-      "My portfolio has grown 25% since I started following the signals last month",
-      "The team rewards program is an amazing way to earn passive income",
-      "Today's market was volatile but the signals navigated it perfectly",
-      "I recommended this to my colleague and he's already seeing results",
-      "The combination of education and signals makes this truly valuable",
-      "Started with a small investment and now I'm trading with confidence",
-      "The team building rewards have added significantly to my monthly income",
-      "Every signal today was a winner, what an incredible session",
-      "My confidence in trading has grown enormously since joining this team",
-      "The accuracy speaks for itself, profits don't lie",
-      "Building a team has been the best decision alongside trading",
-      "The daily signals consistency is what keeps me motivated",
-    ],
-    [
-      "Profitable day once again, the streak continues unbroken",
-      "I shared my results with friends and they couldn't believe the consistency",
-      "The team leader's market insights are worth their weight in gold",
-      "My financial goals are becoming achievable thanks to these signals",
-      "The referral program rewards are truly generous and fair",
-      "Today proved again why patience and following signals pays off",
-      "I've stopped worrying about market volatility since joining this team",
-      "The structured approach to trading here is professionally managed",
-      "Team building has introduced me to amazing like-minded individuals",
-      "My wife noticed the extra income and now she wants to join too",
-      "The signals are not just accurate, they're consistently timed well",
-      "Monthly review of my earnings shows steady upward growth",
-      "The rewards system motivates everyone to grow together as a team",
-      "I feel financially secure for the first time thanks to these profits",
-      "Tomorrow should be another great day based on the market analysis shared",
-    ],
-  ],
-  2: [
-    [
-      "What a session today! The signals were absolutely on fire",
-      "My account hit a new all-time high today, couldn't be happier",
-      "The detailed analysis before each signal helps me learn as I earn",
-      "I've built a team of 8 people and we're all profiting together",
-      "The accuracy rate this month is the highest I've seen since joining",
-      "Today's signals had perfect entry points, no false starts at all",
-      "The team rewards have actually exceeded my signal trading profits this month",
-      "I appreciate how the community celebrates everyone's success equally",
-      "Went from knowing nothing about trading to earning consistently",
-      "The accountability within our team keeps everyone focused and profitable",
-      "Five consecutive profitable days, this system is incredibly reliable",
-      "The weekend analysis sessions prepare us perfectly for Monday trading",
-      "I've been able to reduce my work hours because of the trading income",
-      "Team building is not just about referrals, it's about shared success",
-      "The signals are backed by real analysis, not random guesses",
-    ],
-    [
-      "Today's results proved once again the power of following the system",
-      "My initial skepticism has been completely replaced by confidence",
-      "The signal community here is the most supportive I've been part of",
-      "Third profitable week in a row, the consistency is unmatched",
-      "The team rewards structure motivates building genuine relationships",
-      "I'm amazed at how well the signals performed during market turbulence",
-      "My trading capital has doubled since I joined three months ago",
-      "The leadership team truly cares about everyone's success",
-      "Building a team has taught me valuable skills beyond just trading",
-      "Today's profit alone covered my monthly subscription cost multiple times",
-      "The transparency in sharing both wins and lessons learned is refreshing",
-      "I've learned more about trading here than from any course I've taken",
-      "The reward tiers incentivize growth and help everyone earn more",
-      "My financial independence journey accelerated significantly after joining",
-      "Looking forward to another productive week of profitable signals",
-    ],
-  ],
-  3: [
-    [
-      "Record-breaking profits today, the signals were incredibly precise",
-      "I just withdrew my weekly profits and it feels amazing to see real results",
-      "The market analysis shared before trading hours is always thorough",
-      "My team has grown to 12 members and we're all earning consistently",
-      "The signal accuracy has been above 88% for three weeks straight",
-      "Today I learned a new trading concept from the pre-session analysis",
-      "The passive income from team rewards has been a game changer",
-      "This community has transformed how I think about generating income",
-      "Every week I see improvement in both my trading and team building",
-      "The signals capture market movements that I would have missed on my own",
-      "Helped a new member set up today and they made a profit on their first trade",
-      "The consistent daily schedule makes it easy to plan around",
-      "Team building rewards are proportional to effort, which is very fair",
-      "My monthly income has increased by 40% since I started here",
-      "The quality of signals and community support is worth every penny",
-    ],
-    [
-      "Another day of solid profits, the system just works",
-      "I've been documenting my journey and the growth is undeniable",
-      "The trading community here is genuinely helpful, no competition",
-      "Made enough from this week's signals to cover next month's expenses",
-      "The team building aspect creates a support network for everyone",
-      "Today's signals had amazing risk-to-reward ratios across the board",
-      "My approach to money management has improved since joining",
-      "The reward system encourages collaboration rather than competition",
-      "I've introduced the opportunity to my family members as well",
-      "Celebrating six months of consistent profitability today",
-      "The signals work because the analysis behind them is thorough",
-      "Team milestones bring great bonuses that reward long-term commitment",
-      "Every new member I bring in strengthens our collective earning power",
-      "The freedom that consistent trading profits provide is priceless",
-      "Grateful for this community and the opportunities it has given me",
-    ],
-  ],
-  4: [
-    [
-      "Friday profits to finish the week strong, another great session",
-      "Looking at my weekly summary, every single day was profitable",
-      "The pre-market analysis today predicted the movement perfectly",
-      "My team earned collectively more than any of us could alone",
-      "Signal accuracy this week averaged above 90%, outstanding results",
-      "I've started investing my signal profits into longer-term positions",
-      "The community mentorship program helped me improve my own trading skills",
-      "The weekly rewards from team building keep getting better as we grow",
-      "Finished the week with the highest profit margin since I started",
-      "The structured trading schedule allows me to maintain work-life balance",
-      "New team members are always impressed by the accuracy from day one",
-      "This platform has changed how I approach personal finance entirely",
-      "Team building rewards complement trading profits beautifully",
-      "I never thought I could earn this consistently from trading",
-      "Weekend plans funded entirely by this week's signal profits",
-    ],
-    [
-      "What a way to end the week, profits exceeded all expectations",
-      "My journey from beginner to confident trader happened here",
-      "The signals delivered consistently all week without a single losing day",
-      "Team growth this week was excellent, three new members joined",
-      "The reward structure gets more attractive as your team expands",
-      "I compared my results with friends trading elsewhere, we far outperform",
-      "Today's final signal was the cherry on top of a perfect week",
-      "The discipline taught through following signals has improved my life",
-      "Building a team gives purpose beyond just personal profit",
-      "My financial targets for this month were achieved ahead of schedule",
-      "The combination of daily signals and team rewards is a winning formula",
-      "Every member in my team is profitable, which speaks volumes",
-      "The weekend gives us time to review and prepare for next week's success",
-      "I'm so glad I trusted the process and stayed committed from the start",
-      "Next week is going to be even better, the market setup looks favorable",
-    ],
-  ],
-  5: [
-    [
-      "Even Saturday analysis sessions add value, reviewing the week's trades",
-      "Weekend is a great time to reflect on the profits earned this week",
-      "My team discussion today focused on strategies for next week",
-      "The weekly profit summary shows consistent growth week over week",
-      "Using the weekend to plan team building activities for next week",
-      "Shared my weekly earnings screenshot with the team, everyone motivated",
-      "The educational content shared on weekends is extremely valuable",
-      "Team building has become second nature, always looking for new members",
-      "Weekend rewards from the platform keep the momentum going",
-      "Preparing my trading plan for next week based on the market analysis",
-      "The community is active even on weekends, sharing insights and tips",
-      "My team leader shared advanced strategies during today's weekend session",
-      "The rewards I earned this week from team building were substantial",
-      "Feeling confident about next week after reviewing this week's results",
-      "The systematic approach to trading here eliminates emotional decisions",
-    ],
-    [
-      "Weekend review shows this was one of our best weeks ever as a team",
-      "Planning to onboard two new team members next week for growth",
-      "The Saturday analysis session always gives us an edge for Monday",
-      "My trading journal shows consistent improvement month over month",
-      "The team rewards this week were a pleasant surprise, exceeded expectations",
-      "Using profits from signals to diversify my investment portfolio",
-      "The support from more experienced members on weekends is invaluable",
-      "Weekend study of market patterns has improved my understanding significantly",
-      "Team building milestones are achievable and the rewards are meaningful",
-      "My family is supportive because they see the consistent results",
-      "The platform's transparency builds trust and encourages participation",
-      "Reviewed my six-month performance and the growth trend is remarkable",
-      "Team events and discussions create strong bonds among members",
-      "Financial freedom is not just a dream anymore, it's becoming reality",
-      "Ready to crush it next week with renewed energy and better strategies",
-    ],
-  ],
-  6: [
-    [
-      "Sunday preparation for the new trading week ahead",
-      "Reviewing last week's performance to improve for the coming week",
-      "The Sunday market preview always helps me prepare mentally for Monday",
-      "My team check-in today showed everyone is motivated for next week",
-      "Using Sunday to set new financial goals based on recent profits",
-      "The consistent weekly routine of review and planning works perfectly",
-      "Team building discussions on Sunday set the tone for the week ahead",
-      "Grateful for another profitable week and excited for what's next",
-      "My trading mindset has completely transformed since joining this team",
-      "Sunday is for gratitude and planning, both equally important",
-      "The weekend analysis gives us confidence going into a new week",
-      "My team's collective success motivates me to keep growing",
-      "Setting higher targets for next week based on this week's strong results",
-      "The rewards program makes Sundays exciting with weekly calculations",
-      "Tomorrow starts a new chapter of profits and team growth",
-    ],
-    [
-      "End of week reflection: another successful seven days in the books",
-      "Sunday planning session completed, ready for Monday's signals",
-      "My portfolio review shows healthy and consistent growth pattern",
-      "Team meeting today was productive, everyone shared their wins",
-      "The systematic approach we follow eliminates guesswork from trading",
-      "My referral network continues to grow organically through results",
-      "Sunday preparation is what separates good weeks from great weeks",
-      "The community's positive energy on Sundays is always motivating",
-      "Financial discipline learned here extends beyond just trading",
-      "Ready for another week of profits, signals, and team growth",
-      "The platform delivers on its promises consistently week after week",
-      "My income streams have diversified significantly since joining",
-      "Team milestones achieved this week set us up for bigger rewards",
-      "The Sunday night anticipation for Monday's first signal is exciting",
-      "Let's make next week our best week yet as a united team",
-    ],
-  ],
-};
 
 const READY_WINDOWS = [
   { startHour: 8, startMin: 20 },
@@ -404,8 +129,10 @@ function generateReadySchedule(windowIndex: number, groupIndex: number, dayOfYea
 }
 
 function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCount: number = 5, activeBotIndices: number[] = [0, 1, 2, 3]): { botIndex: number; message: string; minuteOffset: number }[] {
+  const lang = getConversationLanguageForDay(dayOfYear);
+  const eveningTopics = EVENING_CHAT_BY_LANG[lang] || EVENING_CHAT_BY_LANG["English"];
   const dayOfWeek = getNigeriaDate().getDay();
-  const topicSets = EVENING_CHAT_TOPICS[dayOfWeek] || EVENING_CHAT_TOPICS[0];
+  const topicSets = eveningTopics[dayOfWeek] || eveningTopics[0];
 
   const allMessages: string[] = [];
   for (const set of topicSets) {
@@ -437,8 +164,10 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
 }
 
 function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3]): { botIndex: number; message: string; minuteOffset: number }[] {
+  const lang = getConversationLanguageForDay(dayOfYear);
+  const messages = MORNING_CHAT_BY_LANG[lang] || MORNING_CHAT_BY_LANG["English"];
   const seed = dayOfYear * 50 + groupIndex * 7;
-  const shuffled = shuffleArray(MORNING_CHAT_MESSAGES, seed);
+  const shuffled = shuffleArray(messages, seed);
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
   let currentMinute = 0;
 
@@ -491,8 +220,11 @@ export async function getFullScheduleForToday(): Promise<any> {
   const numGroups = groupsList.length || 5;
   const activeBots = await getActiveBotIndices();
 
+  const conversationLanguage = getConversationLanguageForDay(dayOfYear);
+
   const schedule: any = {
     language,
+    conversationLanguage,
     mainBotMessage,
     mainBotTime: "8:10 AM",
     groupNames: groupsList.map(g => g.name),
