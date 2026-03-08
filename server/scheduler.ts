@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
 import { log } from "./index";
-import { MORNING_CHAT_MESSAGES as MORNING_CHAT_BY_LANG, EVENING_CHAT_TOPICS as EVENING_CHAT_BY_LANG, CONVERSATION_LANGUAGES, getConversationLanguageForDay } from "./messages";
+import { MORNING_THREADS_BY_LANG, MORNING_CHAT_MESSAGES as MORNING_CHAT_BY_LANG, EVENING_CHAT_TOPICS as EVENING_CHAT_BY_LANG, CONVERSATION_LANGUAGES, getConversationLanguageForDay } from "./messages";
 
 const NIGERIA_TZ = "Africa/Lagos";
 
@@ -197,42 +197,47 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
   const dayOfWeek = getNigeriaDate().getDay();
   const topicSets = eveningTopics[dayOfWeek] || eveningTopics[0];
 
-  const set1 = topicSets[0] || [];
-  const set2 = topicSets[1] || [];
-
-  const conversationFlow: string[] = [];
-  const maxLen = Math.max(set1.length, set2.length);
-  for (let i = 0; i < maxLen; i++) {
-    if (i < set1.length) conversationFlow.push(set1[i]);
-    if (i < set2.length) conversationFlow.push(set2[i]);
-  }
-  const uniqueMessages = [...new Set(conversationFlow)];
-
+  const sets = topicSets.map(s => [...s]);
   const seed = dayOfYear * 100 + groupIndex * 37;
-  const totalMinutes = 180;
+  const totalMinutes = 215;
 
-  const chunks: string[][] = [];
-  const chunkSize = 3;
-  for (let i = 0; i < uniqueMessages.length; i += chunkSize) {
-    chunks.push(uniqueMessages.slice(i, i + chunkSize));
-  }
-  const shuffledChunks = shuffleArray(chunks, seed);
-  const groupMessages: string[] = [];
-  for (const chunk of shuffledChunks) {
-    groupMessages.push(...chunk);
-  }
+  const shuffledSets = shuffleArray([...sets], seed);
 
-  const botOrder = generateNaturalBotOrder(groupMessages.length, activeBotIndices, seed + 999);
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
   let currentMinute = 0;
+  let botSeed = seed + 999;
+  const usedMessages = new Set<string>();
 
-  for (let i = 0; i < groupMessages.length && currentMinute < totalMinutes; i++) {
-    schedule.push({
-      botIndex: botOrder[i],
-      message: groupMessages[i],
-      minuteOffset: currentMinute,
-    });
-    currentMinute += 5;
+  for (const topicSet of shuffledSets) {
+    if (currentMinute >= totalMinutes) break;
+
+    const leadBot = activeBotIndices[botSeed % activeBotIndices.length];
+    botSeed = (botSeed * 1103515245 + 12345) & 0x7fffffff;
+
+    for (let m = 0; m < topicSet.length && currentMinute < totalMinutes; m++) {
+      const msg = topicSet[m];
+      if (usedMessages.has(msg)) continue;
+      usedMessages.add(msg);
+
+      let bot: number;
+      if (m === 0) {
+        bot = leadBot;
+      } else {
+        botSeed = (botSeed * 1103515245 + 12345) & 0x7fffffff;
+        if (botSeed % 100 < 35) {
+          bot = schedule[schedule.length - 1]?.botIndex ?? leadBot;
+        } else {
+          bot = activeBotIndices[botSeed % activeBotIndices.length];
+        }
+      }
+
+      schedule.push({
+        botIndex: bot,
+        message: msg,
+        minuteOffset: currentMinute,
+      });
+      currentMinute += 5;
+    }
   }
 
   return schedule;
@@ -240,32 +245,42 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
 
 function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3]): { botIndex: number; message: string; minuteOffset: number }[] {
   const lang = getConversationLanguageForDay(dayOfYear);
-  const allMessages = MORNING_CHAT_BY_LANG[lang] || MORNING_CHAT_BY_LANG["English"];
-  const uniqueMessages = [...new Set(allMessages)];
+  const threads = MORNING_THREADS_BY_LANG[lang] || MORNING_THREADS_BY_LANG["English"];
   const seed = dayOfYear * 50 + groupIndex * 7;
 
-  const chunks: string[][] = [];
-  for (let i = 0; i < uniqueMessages.length; i += 2) {
-    chunks.push(uniqueMessages.slice(i, i + 2));
-  }
-  const shuffledChunks = shuffleArray(chunks, seed);
-  const groupMessages: string[] = [];
-  for (const chunk of shuffledChunks) {
-    groupMessages.push(...chunk);
-  }
-  const msgCount = Math.min(12, groupMessages.length);
+  const shuffledThreads = shuffleArray([...threads], seed);
 
-  const botOrder = generateNaturalBotOrder(msgCount, activeBotIndices, seed + 77);
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
   let currentMinute = 0;
+  const totalMinutes = 200;
+  let botSeed = seed + 77;
 
-  for (let i = 0; i < msgCount && currentMinute < 60; i++) {
-    schedule.push({
-      botIndex: botOrder[i],
-      message: groupMessages[i],
-      minuteOffset: currentMinute,
-    });
-    currentMinute += 5;
+  for (const thread of shuffledThreads) {
+    if (currentMinute >= totalMinutes) break;
+
+    const leadBot = activeBotIndices[botSeed % activeBotIndices.length];
+    botSeed = (botSeed * 1103515245 + 12345) & 0x7fffffff;
+
+    for (let m = 0; m < thread.length && currentMinute < totalMinutes; m++) {
+      let bot: number;
+      if (m === 0) {
+        bot = leadBot;
+      } else {
+        botSeed = (botSeed * 1103515245 + 12345) & 0x7fffffff;
+        if (botSeed % 100 < 40) {
+          bot = schedule[schedule.length - 1]?.botIndex ?? leadBot;
+        } else {
+          bot = activeBotIndices[botSeed % activeBotIndices.length];
+        }
+      }
+
+      schedule.push({
+        botIndex: bot,
+        message: thread[m],
+        minuteOffset: currentMinute,
+      });
+      currentMinute += 5;
+    }
   }
 
   return schedule;
@@ -329,10 +344,17 @@ export async function getFullScheduleForToday(): Promise<any> {
     const morningItems = generateMorningChatSchedule(g, dayOfYear, activeBots);
     schedule.morningChat.push({
       groupIndex: g,
-      messages: morningItems.map(item => ({
-        ...item,
-        time: `7:${String(item.minuteOffset).padStart(2, "0")} AM`,
-      })),
+      messages: morningItems.map(item => {
+        const totalMin = item.minuteOffset;
+        const hour = 5 + Math.floor(totalMin / 60);
+        const min = totalMin % 60;
+        const ampm = hour >= 12 ? "PM" : "AM";
+        const displayHour = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
+        return {
+          ...item,
+          time: `${displayHour}:${String(min).padStart(2, "0")} ${ampm}`,
+        };
+      }),
     });
   }
 
@@ -380,8 +402,8 @@ export async function getFullScheduleForToday(): Promise<any> {
     schedule.eveningChat.push({
       groupIndex: g,
       messages: eveningItems.map(item => {
-        const totalMin = 30 + item.minuteOffset;
-        const hour = 16 + Math.floor(totalMin / 60);
+        const totalMin = 25 + item.minuteOffset;
+        const hour = 15 + Math.floor(totalMin / 60);
         const min = totalMin % 60;
         const displayHour = hour > 12 ? hour - 12 : hour;
         return {
@@ -608,7 +630,7 @@ export function startScheduler() {
   }, { timezone: NIGERIA_TZ });
   scheduledJobs.push(mainBotJob);
 
-  const morningJob = cron.schedule("0 7 * * *", async () => {
+  const morningJob = cron.schedule("0 5 * * *", async () => {
     try {
       log("=== MORNING CHAT TRIGGERED ===", "scheduler");
       const dayOfYear = getDayOfYear();
@@ -722,7 +744,7 @@ export function startScheduler() {
   }, { timezone: NIGERIA_TZ });
   scheduledJobs.push(doneJob);
 
-  const eveningJob = cron.schedule("0 16 * * *", async () => {
+  const eveningJob = cron.schedule("25 15 * * *", async () => {
     try {
       log("=== EVENING CHAT TRIGGERED ===", "scheduler");
       const dayOfYear = getDayOfYear();
@@ -790,7 +812,7 @@ export async function triggerEveningChatNow(): Promise<string> {
     if (groupsList.length === 0) return "No groups configured";
 
     const now = getNigeriaDate();
-    const currentMinutesFromStart = (now.getHours() * 60 + now.getMinutes()) - (16 * 60);
+    const currentMinutesFromStart = (now.getHours() * 60 + now.getMinutes()) - (15 * 60 + 25);
 
     const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
     for (let g = 0; g < groupsList.length; g++) {
