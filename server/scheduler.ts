@@ -574,33 +574,19 @@ async function sendTelegramBotMessage(token: string, chatId: string, message: st
 
 async function sendUserbotMessage(sessionString: string, apiId: string, apiHash: string, chatId: string, message: string): Promise<boolean> {
   try {
-    const { TelegramClient } = await import("telegram");
-    const { StringSession } = await import("telegram/sessions");
-    const session = new StringSession(sessionString);
-    const client = new TelegramClient(session, parseInt(apiId), apiHash, {
-      connectionRetries: 3,
-    });
-    await client.connect();
-    const dialogs = await client.getDialogs({ limit: 500 });
-    const targetId = parseInt(chatId);
-    const dialog = dialogs.find((d: any) => {
-      const peerId = d.entity?.id;
-      if (!peerId) return false;
-      const fullId = d.isChannel || d.isGroup ? -1000000000000 - Number(peerId) : -Number(peerId);
-      return fullId === targetId;
-    });
-    if (!dialog || !dialog.entity) {
-      log(`Could not find group ${chatId} in userbot dialogs`, "telegram");
-      await client.disconnect();
-      return false;
+    const { execFile } = await import("child_process");
+    const { promisify } = await import("util");
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync("python3", [
+      "server/telegram_sender.py", "send",
+      sessionString, apiId, apiHash, chatId, message
+    ], { timeout: 30000 });
+    const result = JSON.parse(stdout.trim());
+    if (result.success) {
+      return true;
     }
-    await client.invoke(new (await import("telegram/tl")).Api.messages.SendMessage({
-      peer: dialog.inputEntity,
-      message,
-      randomId: BigInt(Date.now()),
-    }));
-    await client.disconnect();
-    return true;
+    log(`Userbot send failed: ${result.error}`, "telegram");
+    return false;
   } catch (err: any) {
     log(`Failed to send userbot message: ${err.message}`, "telegram");
     return false;

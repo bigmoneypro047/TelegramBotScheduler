@@ -123,6 +123,14 @@ export async function registerRoutes(
 
   const loginSessions: Map<string, any> = new Map();
 
+  async function runPython(args: string[]): Promise<any> {
+    const { execFile } = await import("child_process");
+    const { promisify } = await import("util");
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync("python3", ["server/telegram_sender.py", ...args], { timeout: 30000 });
+    return JSON.parse(stdout.trim());
+  }
+
   app.post("/api/userbots/:id/request-code", async (req, res) => {
     try {
       const bot = await storage.getUserbot(req.params.id);
@@ -134,25 +142,14 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Phone number is required" });
       }
 
-      const { TelegramClient } = await import("telegram");
-      const { StringSession } = await import("telegram/sessions");
-
-      const client = new TelegramClient(
-        new StringSession(""),
-        parseInt(bot.apiId),
-        bot.apiHash,
-        { connectionRetries: 3 }
-      );
-
-      await client.connect();
-      const result = await client.sendCode(
-        { apiId: parseInt(bot.apiId), apiHash: bot.apiHash },
-        phoneNumber
-      );
+      const result = await runPython(["request_code", bot.apiId, bot.apiHash, phoneNumber]);
+      if (!result.success) {
+        return res.status(500).json({ error: result.error });
+      }
 
       loginSessions.set(req.params.id, {
-        client,
         phoneNumber,
+        tempSession: result.session,
         phoneCodeHash: result.phoneCodeHash,
       });
 
@@ -169,76 +166,46 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No login session found. Request code first." });
       }
 
+      const bot = await storage.getUserbot(req.params.id);
+      if (!bot || !bot.apiId || !bot.apiHash) {
+        return res.status(400).json({ error: "Userbot not found or missing API credentials" });
+      }
+
       const { code, password } = req.body;
       if (!code) {
         return res.status(400).json({ error: "Verification code is required" });
       }
 
-      const { client, phoneNumber, phoneCodeHash } = session;
-      const { Api } = await import("telegram/tl");
+      const { phoneNumber, tempSession, phoneCodeHash } = session;
+      const args = ["verify_code", tempSession, bot.apiId, bot.apiHash, phoneNumber, code, phoneCodeHash];
+      if (password) args.push(password);
 
-      try {
-        await client.invoke(
-          new Api.auth.SignIn({
-            phoneNumber,
-            phoneCodeHash,
-            phoneCode: code,
-          })
-        );
-      } catch (signInErr: any) {
-        if (signInErr.errorMessage === "SESSION_PASSWORD_NEEDED") {
-          if (!password) {
-            return res.status(400).json({
-              error: "Two-factor authentication is enabled. Please provide your password.",
-              needsPassword: true,
-            });
+      const result = await runPython(args);
+      if (!result.success) {
+        if (result.needsPassword) {
+          if (result.session) {
+            loginSessions.set(req.params.id, { ...session, tempSession: result.session });
           }
-          const passwordResult = await client.invoke(new Api.account.GetPassword());
-          const srpPassword = await client.computeSrpParams(passwordResult, password);
-          await client.invoke(new Api.auth.CheckPassword({ password: srpPassword }));
-        } else {
-          throw signInErr;
+          return res.status(400).json({
+            error: "Two-factor authentication is enabled. Please provide your password.",
+            needsPassword: true,
+          });
         }
+        return res.status(500).json({ error: result.error });
       }
-
-      await client.getDialogs({ limit: 100 });
-
-      const sessionString = (client.session as any).save();
-      const botData = await storage.getUserbot(req.params.id);
 
       await storage.upsertUserbot({
         id: req.params.id,
-        name: botData?.name || `Userbot`,
+        name: bot.name,
         phoneNumber,
-        sessionString,
-        apiId: botData?.apiId || null,
-        apiHash: botData?.apiHash || null,
+        sessionString: result.session,
+        apiId: bot.apiId,
+        apiHash: bot.apiHash,
         isActive: true,
-        order: botData?.order || 0,
+        order: bot.order,
       });
 
-      try {
-        const groupsList = await storage.getGroups();
-        if (groupsList.length > 0 && groupsList[0].groupId) {
-          const dialogs = await client.getDialogs({});
-          const targetId = parseInt(groupsList[0].groupId);
-          const dialog = dialogs.find((d: any) => {
-            const peerId = d.entity?.id;
-            if (!peerId) return false;
-            const fullId = d.isChannel || d.isGroup ? -1000000000000 - Number(peerId) : -Number(peerId);
-            return fullId === targetId;
-          });
-          if (dialog?.entity) {
-            await client.sendMessage(dialog.entity, { message: `${botData?.name || 'Userbot'} connected successfully!` });
-          }
-        }
-      } catch (testErr: any) {
-        console.log(`[login] Test send failed: ${testErr.message}`);
-      }
-
-      await client.disconnect();
       loginSessions.delete(req.params.id);
-
       res.json({ success: true, message: "Userbot authenticated and session saved" });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -321,36 +288,14 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Group 1 not found or has no group ID" });
       }
 
-      const { TelegramClient } = await import("telegram");
-      const { StringSession } = await import("telegram/sessions");
-      const client = new TelegramClient(
-        new StringSession(bot.sessionString),
-        parseInt(bot.apiId),
-        bot.apiHash,
-        { connectionRetries: 3, useWSS: false }
-      );
-      await client.connect();
-      const rawId = group.groupId!;
-      const dialogs = await client.getDialogs({});
-      const targetId = parseInt(rawId);
-      let targetEntity: any = null;
-      for (const d of dialogs) {
-        if (!d.entity) continue;
-        const eid = Number((d.entity as any).id);
-        const isSuper = d.isChannel || d.isGroup;
-        const computedId = isSuper ? -1000000000000 - eid : -eid;
-        if (computedId === targetId) {
-          targetEntity = d.entity;
-          break;
-        }
+      const result = await runPython([
+        "send", bot.sessionString, bot.apiId, bot.apiHash,
+        group.groupId, `Test message from ${bot.name} - System check!`
+      ]);
+
+      if (!result.success) {
+        return res.status(500).json({ error: result.error });
       }
-      if (!targetEntity) {
-        throw new Error(`Could not find group ${rawId} in ${bot.name}'s dialogs`);
-      }
-      console.log(`[test-userbot] Found: ${targetEntity.title}`);
-      const result = await client.sendMessage(targetEntity, { message: `Test message from ${bot.name} - System check!` });
-      console.log(`[test-userbot] Result: ${result?.id}`);
-      await client.disconnect();
 
       await storage.createMessageLog({
         botName: bot.name,
