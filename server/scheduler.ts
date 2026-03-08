@@ -726,6 +726,52 @@ export function stopScheduler() {
   log("Scheduler stopped", "scheduler");
 }
 
+export async function triggerEveningChatNow(): Promise<string> {
+  try {
+    log("=== MANUAL EVENING CHAT TRIGGERED ===", "scheduler");
+    const dayOfYear = getDayOfYear();
+    const groupsList = await getGroupsWithRetry();
+    const activeBots = await getActiveBotIndices();
+    log(`Manual evening: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
+
+    if (groupsList.length === 0) return "No groups configured";
+
+    const now = getNigeriaDate();
+    const currentMinutesFromStart = (now.getHours() * 60 + now.getMinutes()) - (16 * 60 + 30);
+
+    const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
+    for (let g = 0; g < groupsList.length; g++) {
+      const items = generateEveningMessages(g, dayOfYear, groupsList.length, activeBots);
+      const remaining = items.filter(item => item.minuteOffset >= currentMinutesFromStart);
+      if (remaining.length === 0) continue;
+      const firstOffset = remaining[0].minuteOffset;
+      for (const item of remaining) {
+        allItems.push({
+          botName: `Userbot ${item.botIndex + 1}`,
+          groupName: groupsList[g].name,
+          message: item.message,
+          delayMs: (item.minuteOffset - firstOffset) * 60 * 1000,
+        });
+      }
+    }
+    allItems.sort((a, b) => a.delayMs - b.delayMs);
+    log(`Manual evening: ${allItems.length} messages queued (starting now, offset was ${currentMinutesFromStart}min)`, "scheduler");
+
+    let lastDelay = 0;
+    for (const item of allItems) {
+      const wait = item.delayMs - lastDelay;
+      if (wait > 0) await sleep(wait);
+      lastDelay = item.delayMs;
+      await sendOneMessage(item.botName, item.groupName, item.message, "evening_chat_manual");
+    }
+    log("=== MANUAL EVENING CHAT COMPLETE ===", "scheduler");
+    return `Dispatched ${allItems.length} messages across ${groupsList.length} groups`;
+  } catch (err: any) {
+    log(`Manual evening FAILED: ${err.message}\n${err.stack}`, "scheduler");
+    return `Error: ${err.message}`;
+  }
+}
+
 export async function triggerReadyWindowNow(): Promise<string> {
   try {
     log("=== MANUAL READY WINDOW TEST TRIGGERED ===", "scheduler");

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { startScheduler, stopScheduler, getSchedulerStatus, getFullScheduleForToday, triggerReadyWindowNow } from "./scheduler";
+import { startScheduler, stopScheduler, getSchedulerStatus, getFullScheduleForToday, triggerReadyWindowNow, triggerEveningChatNow } from "./scheduler";
 import { getWatchdogStatus } from "./watchdog";
 
 export async function registerRoutes(
@@ -333,6 +333,13 @@ export async function registerRoutes(
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  app.post("/api/trigger-evening-chat", async (_req, res) => {
+    triggerEveningChatNow().catch(err => {
+      console.error("Evening chat trigger error:", err.message);
+    });
+    res.json({ success: true, result: "Evening chat started in background" });
   });
 
   app.get("/api/health", async (_req, res) => {
