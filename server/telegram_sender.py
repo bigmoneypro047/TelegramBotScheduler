@@ -13,18 +13,41 @@ async def send_message(session_string, api_id, api_hash, chat_id, message):
         await client.disconnect()
         return
     
-    entity = await client.get_entity(int(chat_id))
-    await client.send_message(entity, message)
-    
-    new_session = client.session.save()
-    await client.disconnect()
-    print(json.dumps({"success": True, "session": new_session}))
+    try:
+        dialogs = await client.get_dialogs()
+        
+        target_id = int(chat_id)
+        entity = None
+        for dialog in dialogs:
+            if dialog.entity and hasattr(dialog.entity, 'id'):
+                eid = dialog.entity.id
+                if hasattr(dialog.entity, 'megagroup') or hasattr(dialog.entity, 'broadcast'):
+                    full_id = -1000000000000 - eid
+                else:
+                    full_id = -eid
+                if full_id == target_id:
+                    entity = dialog.entity
+                    break
+        
+        if entity is None:
+            print(json.dumps({"success": False, "error": f"Could not find group {chat_id} in dialogs"}))
+            await client.disconnect()
+            return
+        
+        await client.send_message(entity, message)
+        new_session = client.session.save()
+        await client.disconnect()
+        print(json.dumps({"success": True, "session": new_session}))
+    except Exception as e:
+        print(json.dumps({"success": False, "error": str(e)}))
+        await client.disconnect()
 
 async def login_request_code(api_id, api_hash, phone):
     client = TelegramClient(StringSession(), int(api_id), api_hash)
     await client.connect()
     result = await client.send_code_request(phone)
     session = client.session.save()
+    await client.disconnect()
     print(json.dumps({
         "success": True,
         "session": session,
@@ -38,16 +61,28 @@ async def login_verify_code(session_string, api_id, api_hash, phone, code, phone
     try:
         await client.sign_in(phone, code, phone_code_hash=phone_code_hash)
     except Exception as e:
-        if "Two-steps verification" in str(e) or "2FA" in str(e) or "password" in str(e).lower():
+        err_str = str(e)
+        if "Two-steps verification" in err_str or "2FA" in err_str or "password" in err_str.lower() or "SessionPasswordNeeded" in type(e).__name__:
             if not password:
-                print(json.dumps({"success": False, "needsPassword": True, "error": "2FA password required", "session": client.session.save()}))
+                session_save = client.session.save()
+                await client.disconnect()
+                print(json.dumps({"success": False, "needsPassword": True, "error": "2FA password required", "session": session_save}))
+                return
+            try:
+                await client.sign_in(password=password)
+            except Exception as e2:
+                print(json.dumps({"success": False, "error": str(e2)}))
                 await client.disconnect()
                 return
-            await client.sign_in(password=password)
         else:
-            print(json.dumps({"success": False, "error": str(e)}))
+            print(json.dumps({"success": False, "error": err_str}))
             await client.disconnect()
             return
+    
+    try:
+        await client.get_dialogs()
+    except:
+        pass
     
     new_session = client.session.save()
     await client.disconnect()
