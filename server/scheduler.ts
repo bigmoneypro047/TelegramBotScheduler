@@ -581,7 +581,24 @@ async function sendUserbotMessage(sessionString: string, apiId: string, apiHash:
       connectionRetries: 3,
     });
     await client.connect();
-    await client.sendMessage(chatId, { message });
+    const dialogs = await client.getDialogs({ limit: 500 });
+    const targetId = parseInt(chatId);
+    const dialog = dialogs.find((d: any) => {
+      const peerId = d.entity?.id;
+      if (!peerId) return false;
+      const fullId = d.isChannel || d.isGroup ? -1000000000000 - Number(peerId) : -Number(peerId);
+      return fullId === targetId;
+    });
+    if (!dialog || !dialog.entity) {
+      log(`Could not find group ${chatId} in userbot dialogs`, "telegram");
+      await client.disconnect();
+      return false;
+    }
+    await client.invoke(new (await import("telegram/tl")).Api.messages.SendMessage({
+      peer: dialog.inputEntity,
+      message,
+      randomId: BigInt(Date.now()),
+    }));
     await client.disconnect();
     return true;
   } catch (err: any) {

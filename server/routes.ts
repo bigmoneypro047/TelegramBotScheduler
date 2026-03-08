@@ -144,17 +144,40 @@ export async function registerRoutes(
         { connectionRetries: 3 }
       );
 
-      await client.connect();
-      const result = await client.sendCode(
-        { apiId: parseInt(bot.apiId), apiHash: bot.apiHash },
-        phoneNumber
-      );
+      let resolveCode: (code: string) => void;
+      let resolvePassword: ((pw: string) => void) | null = null;
+      const codePromise = new Promise<string>((resolve) => { resolveCode = resolve; });
 
       loginSessions.set(req.params.id, {
         client,
         phoneNumber,
-        phoneCodeHash: result.phoneCodeHash,
+        resolveCode: null as any,
+        resolvePassword: null as any,
+        needsPassword: false,
+        startPromise: null as any,
       });
+
+      const startPromise = client.start({
+        phoneNumber: async () => phoneNumber,
+        phoneCode: async () => {
+          return new Promise<string>((resolve) => {
+            const sess = loginSessions.get(req.params.id);
+            if (sess) sess.resolveCode = resolve;
+          });
+        },
+        password: async () => {
+          const sess = loginSessions.get(req.params.id);
+          if (sess) sess.needsPassword = true;
+          return new Promise<string>((resolve) => {
+            const sess2 = loginSessions.get(req.params.id);
+            if (sess2) sess2.resolvePassword = resolve;
+          });
+        },
+        onError: (err) => console.log("[login] Error:", err.message),
+      });
+
+      const sess = loginSessions.get(req.params.id);
+      sess.startPromise = startPromise;
 
       res.json({ success: true, message: "Code sent to your phone" });
     } catch (err: any) {
@@ -170,52 +193,45 @@ export async function registerRoutes(
       }
 
       const { code, password } = req.body;
-      if (!code) {
+      const { client, phoneNumber } = session;
+
+      if (session.needsPassword && password && session.resolvePassword) {
+        session.resolvePassword(password);
+        try {
+          await session.startPromise;
+        } catch (e: any) {
+          return res.status(500).json({ error: e.message });
+        }
+      } else if (code && session.resolveCode) {
+        session.resolveCode(code);
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        if (session.needsPassword && !password) {
+          return res.status(400).json({
+            error: "Two-factor authentication is enabled. Please provide your password.",
+            needsPassword: true,
+          });
+        }
+        try {
+          await session.startPromise;
+        } catch (e: any) {
+          return res.status(500).json({ error: e.message });
+        }
+      } else {
         return res.status(400).json({ error: "Verification code is required" });
       }
 
-      const { client, phoneNumber, phoneCodeHash } = session;
-
-      try {
-        await client.invoke(
-          new (await import("telegram/tl")).Api.auth.SignIn({
-            phoneNumber,
-            phoneCodeHash,
-            phoneCode: code,
-          })
-        );
-      } catch (signInErr: any) {
-        if (signInErr.errorMessage === "SESSION_PASSWORD_NEEDED") {
-          if (!password) {
-            return res.status(400).json({
-              error: "Two-factor authentication is enabled. Please provide your password.",
-              needsPassword: true,
-            });
-          }
-          await client.invoke(
-            new (await import("telegram/tl")).Api.auth.CheckPassword({
-              password: await client.computeSrpParams(
-                await client.invoke(new (await import("telegram/tl")).Api.account.GetPassword()),
-                password
-              ),
-            })
-          );
-        } else {
-          throw signInErr;
-        }
-      }
-
       const sessionString = (client.session as any).save();
+      const botData = await storage.getUserbot(req.params.id);
 
       await storage.upsertUserbot({
         id: req.params.id,
-        name: `Userbot ${(await storage.getUserbot(req.params.id))?.order || 0}`,
+        name: botData?.name || `Userbot`,
         phoneNumber,
         sessionString,
-        apiId: (await storage.getUserbot(req.params.id))?.apiId || null,
-        apiHash: (await storage.getUserbot(req.params.id))?.apiHash || null,
+        apiId: botData?.apiId || null,
+        apiHash: botData?.apiHash || null,
         isActive: true,
-        order: (await storage.getUserbot(req.params.id))?.order || 0,
+        order: botData?.order || 0,
       });
 
       await client.disconnect();
@@ -284,6 +300,64 @@ export async function registerRoutes(
         status: "sent",
       });
       res.json({ success: true, group: group.name });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/test-userbot", async (req, res) => {
+    try {
+      const { userbotIndex } = req.body;
+      const bots = await storage.getUserbots();
+      const bot = bots[userbotIndex ?? 0];
+      if (!bot || !bot.sessionString || !bot.apiId || !bot.apiHash) {
+        return res.status(400).json({ error: `Userbot ${(userbotIndex ?? 0) + 1} not configured` });
+      }
+      const groupsList = await storage.getGroups();
+      const group = groupsList[0];
+      if (!group || !group.groupId) {
+        return res.status(400).json({ error: "Group 1 not found or has no group ID" });
+      }
+
+      const { TelegramClient } = await import("telegram");
+      const { StringSession } = await import("telegram/sessions");
+      const client = new TelegramClient(
+        new StringSession(bot.sessionString),
+        parseInt(bot.apiId),
+        bot.apiHash,
+        { connectionRetries: 3, useWSS: false }
+      );
+      await client.connect();
+      const rawId = group.groupId!;
+      const dialogs = await client.getDialogs({});
+      const targetId = parseInt(rawId);
+      let targetEntity: any = null;
+      for (const d of dialogs) {
+        if (!d.entity) continue;
+        const eid = Number((d.entity as any).id);
+        const isSuper = d.isChannel || d.isGroup;
+        const computedId = isSuper ? -1000000000000 - eid : -eid;
+        if (computedId === targetId) {
+          targetEntity = d.entity;
+          break;
+        }
+      }
+      if (!targetEntity) {
+        throw new Error(`Could not find group ${rawId} in ${bot.name}'s dialogs`);
+      }
+      console.log(`[test-userbot] Found: ${targetEntity.title}`);
+      const result = await client.sendMessage(targetEntity, { message: `Test message from ${bot.name} - System check!` });
+      console.log(`[test-userbot] Result: ${result?.id}`);
+      await client.disconnect();
+
+      await storage.createMessageLog({
+        botName: bot.name,
+        groupName: group.name,
+        message: "Test message",
+        schedulePeriod: "test",
+        status: "sent",
+      });
+      res.json({ success: true, bot: bot.name, group: group.name });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
