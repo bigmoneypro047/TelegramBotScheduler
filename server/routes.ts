@@ -119,5 +119,37 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
+  app.post("/api/groups/bulk-setup", async (req, res) => {
+    const { groups: groupEntries } = req.body;
+    if (!Array.isArray(groupEntries) || groupEntries.length === 0) {
+      return res.status(400).json({ error: "groups array is required" });
+    }
+
+    const existingGroups = await storage.getGroups();
+
+    for (const entry of groupEntries) {
+      const existing = existingGroups.find(g => g.order === entry.order);
+      if (existing) {
+        await storage.upsertGroup({
+          id: existing.id,
+          name: entry.name || existing.name,
+          groupId: entry.groupId,
+          order: entry.order,
+          isActive: true,
+        });
+      } else {
+        await storage.upsertGroup({
+          name: entry.name || `Group ${entry.order}`,
+          groupId: entry.groupId,
+          order: entry.order,
+          isActive: true,
+        });
+      }
+    }
+
+    const updatedGroups = await storage.getGroups();
+    res.json({ success: true, groups: updatedGroups });
+  });
+
   return httpServer;
 }

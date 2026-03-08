@@ -9,6 +9,7 @@ import Dashboard from "@/pages/dashboard";
 import Configuration from "@/pages/configuration";
 import Schedule from "@/pages/schedule";
 import Logs from "@/pages/logs";
+import Setup from "@/pages/setup";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -18,6 +19,7 @@ function Router() {
       <Route path="/config" component={Configuration} />
       <Route path="/schedule" component={Schedule} />
       <Route path="/logs" component={Logs} />
+      <Route path="/setup" component={Setup} />
       <Route component={NotFound} />
     </Switch>
   );

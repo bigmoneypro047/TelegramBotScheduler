@@ -18,10 +18,12 @@ import {
   Calendar,
   FileText,
   Bot,
+  Rocket,
 } from "lucide-react";
 
 const menuItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Group Setup", url: "/setup", icon: Rocket },
   { title: "Configuration", url: "/config", icon: Settings },
   { title: "Schedule", url: "/schedule", icon: Calendar },
   { title: "Logs", url: "/logs", icon: FileText },
