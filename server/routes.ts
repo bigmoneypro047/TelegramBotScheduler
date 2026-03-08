@@ -259,5 +259,35 @@ export async function registerRoutes(
     res.json({ success: true, groups: updatedGroups });
   });
 
+  app.post("/api/test-send", async (req, res) => {
+    try {
+      const { groupIndex } = req.body;
+      const config = await storage.getBotConfig();
+      if (!config?.botToken) {
+        return res.status(400).json({ error: "No bot token configured" });
+      }
+      const groupsList = await storage.getGroups();
+      const idx = groupIndex ?? 0;
+      const group = groupsList[idx];
+      if (!group || !group.groupId) {
+        return res.status(400).json({ error: `Group ${idx + 1} not found or has no group ID` });
+      }
+
+      const TelegramBot = (await import("node-telegram-bot-api")).default;
+      const bot = new TelegramBot(config.botToken, { polling: false });
+      await bot.sendMessage(group.groupId, "Test message from Bot Dashboard - System check!");
+      await storage.createMessageLog({
+        botName: "Main Bot",
+        groupName: group.name,
+        message: "Test message",
+        schedulePeriod: "test",
+        status: "sent",
+      });
+      res.json({ success: true, group: group.name });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return httpServer;
 }
