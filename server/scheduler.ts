@@ -197,18 +197,30 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
   const dayOfWeek = getNigeriaDate().getDay();
   const topicSets = eveningTopics[dayOfWeek] || eveningTopics[0];
 
-  const allMessages: string[] = [];
-  for (const set of topicSets) {
-    allMessages.push(...set);
+  const set1 = topicSets[0] || [];
+  const set2 = topicSets[1] || [];
+
+  const conversationFlow: string[] = [];
+  const maxLen = Math.max(set1.length, set2.length);
+  for (let i = 0; i < maxLen; i++) {
+    if (i < set1.length) conversationFlow.push(set1[i]);
+    if (i < set2.length) conversationFlow.push(set2[i]);
   }
+  const uniqueMessages = [...new Set(conversationFlow)];
 
   const seed = dayOfYear * 100 + groupIndex * 37;
-  const uniqueMessages = [...new Set(allMessages)];
-  const shuffled = shuffleArray(uniqueMessages, seed);
-
   const totalMinutes = 180;
-  const maxMessages = Math.floor(totalMinutes / 5) + 1;
-  const groupMessages = shuffled.slice(0, Math.min(maxMessages, shuffled.length));
+
+  const chunks: string[][] = [];
+  const chunkSize = 3;
+  for (let i = 0; i < uniqueMessages.length; i += chunkSize) {
+    chunks.push(uniqueMessages.slice(i, i + chunkSize));
+  }
+  const shuffledChunks = shuffleArray(chunks, seed);
+  const groupMessages: string[] = [];
+  for (const chunk of shuffledChunks) {
+    groupMessages.push(...chunk);
+  }
 
   const botOrder = generateNaturalBotOrder(groupMessages.length, activeBotIndices, seed + 999);
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
@@ -228,11 +240,21 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
 
 function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3]): { botIndex: number; message: string; minuteOffset: number }[] {
   const lang = getConversationLanguageForDay(dayOfYear);
-  const messages = MORNING_CHAT_BY_LANG[lang] || MORNING_CHAT_BY_LANG["English"];
+  const allMessages = MORNING_CHAT_BY_LANG[lang] || MORNING_CHAT_BY_LANG["English"];
+  const uniqueMessages = [...new Set(allMessages)];
   const seed = dayOfYear * 50 + groupIndex * 7;
-  const uniqueMessages = [...new Set(messages)];
-  const shuffled = shuffleArray(uniqueMessages, seed);
-  const msgCount = Math.min(12, shuffled.length);
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < uniqueMessages.length; i += 2) {
+    chunks.push(uniqueMessages.slice(i, i + 2));
+  }
+  const shuffledChunks = shuffleArray(chunks, seed);
+  const groupMessages: string[] = [];
+  for (const chunk of shuffledChunks) {
+    groupMessages.push(...chunk);
+  }
+  const msgCount = Math.min(12, groupMessages.length);
+
   const botOrder = generateNaturalBotOrder(msgCount, activeBotIndices, seed + 77);
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
   let currentMinute = 0;
@@ -240,7 +262,7 @@ function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, acti
   for (let i = 0; i < msgCount && currentMinute < 60; i++) {
     schedule.push({
       botIndex: botOrder[i],
-      message: shuffled[i],
+      message: groupMessages[i],
       minuteOffset: currentMinute,
     });
     currentMinute += 5;
