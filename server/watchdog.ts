@@ -14,10 +14,10 @@ let externalFailCount = 0;
 let schedulerRestartCount = 0;
 let startTime: Date | null = null;
 
-const SELF_PING_INTERVAL = 2 * 60 * 1000;
-const EXTERNAL_PING_INTERVAL = 3 * 60 * 1000;
-const WATCHDOG_INTERVAL = 5 * 60 * 1000;
-const SCHEDULER_GUARD_INTERVAL = 60 * 1000;
+const SELF_PING_INTERVAL = 2 * 1000;
+const EXTERNAL_PING_INTERVAL = 30 * 1000;
+const WATCHDOG_INTERVAL = 60 * 1000;
+const SCHEDULER_GUARD_INTERVAL = 10 * 1000;
 
 function getLocalUrl(): string {
   const port = process.env.PORT || "5000";
@@ -128,10 +128,23 @@ export function startWatchdog(): void {
   if (selfPingInterval || watchdogInterval) return;
 
   startTime = new Date();
-  log("Watchdog ACTIVATED — self-ping every 2min, external ping every 3min, scheduler guard every 1min", "watchdog");
+  log("Watchdog ACTIVATED — self-ping every 2s, external ping every 30s, scheduler guard every 10s", "watchdog");
 
+  let consecutiveFails = 0;
   selfPingInterval = setInterval(async () => {
-    await selfPing();
+    const ok = await selfPing();
+    if (!ok) {
+      consecutiveFails++;
+      if (consecutiveFails >= 3) {
+        log(`ALERT: ${consecutiveFails} consecutive self-ping failures — server may be unresponsive`, "watchdog");
+        schedulerGuard();
+      }
+    } else {
+      if (consecutiveFails > 0) {
+        log(`Self-ping recovered after ${consecutiveFails} failures`, "watchdog");
+      }
+      consecutiveFails = 0;
+    }
   }, SELF_PING_INTERVAL);
 
   externalPingInterval = setInterval(async () => {
