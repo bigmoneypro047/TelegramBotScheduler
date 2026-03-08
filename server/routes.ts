@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { startScheduler, stopScheduler, getSchedulerStatus, getFullScheduleForToday, triggerReadyWindowNow, triggerEveningChatNow } from "./scheduler";
+import { startScheduler, stopScheduler, getSchedulerStatus, getFullScheduleForToday, triggerReadyWindowNow, triggerEveningChatNow, triggerMorningTestNow } from "./scheduler";
 import { getWatchdogStatus } from "./watchdog";
 
 export async function registerRoutes(
@@ -333,6 +333,13 @@ export async function registerRoutes(
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  app.post("/api/trigger-morning-test", async (_req, res) => {
+    triggerMorningTestNow().catch(err => {
+      console.error("Morning test trigger error:", err.message);
+    });
+    res.json({ success: true, result: "Morning test started in background (Group 1 only, real 5-min intervals)" });
   });
 
   app.post("/api/trigger-evening-chat", async (_req, res) => {

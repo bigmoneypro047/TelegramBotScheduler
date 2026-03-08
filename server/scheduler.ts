@@ -847,6 +847,37 @@ export async function triggerEveningChatNow(): Promise<string> {
   }
 }
 
+export async function triggerMorningTestNow(): Promise<string> {
+  try {
+    log("=== MORNING TEST (GROUP 1 ONLY) TRIGGERED ===", "scheduler");
+    const dayOfYear = getDayOfYear();
+    const groupsList = await getGroupsWithRetry();
+    const activeBots = await getActiveBotIndices();
+
+    if (groupsList.length === 0) return "No groups configured";
+
+    const group = groupsList[0];
+    const items = generateMorningChatSchedule(0, dayOfYear, activeBots);
+    log(`Morning test: ${group.name} — ${items.length} messages over ${items[items.length - 1]?.minuteOffset || 0} minutes`, "scheduler");
+
+    let lastDelay = 0;
+    for (const item of items) {
+      const delayMs = item.minuteOffset * 60 * 1000;
+      const wait = delayMs - lastDelay;
+      if (wait > 0) await sleep(wait);
+      lastDelay = delayMs;
+      const botName = `Userbot ${item.botIndex + 1}`;
+      await sendOneMessage(botName, group.name, item.message, "morning_test");
+    }
+
+    log("=== MORNING TEST COMPLETE ===", "scheduler");
+    return `Sent ${items.length} messages to ${group.name} over ${items[items.length - 1]?.minuteOffset || 0} minutes`;
+  } catch (err: any) {
+    log(`Morning test FAILED: ${err.message}\n${err.stack}`, "scheduler");
+    return `Error: ${err.message}`;
+  }
+}
+
 export async function triggerReadyWindowNow(): Promise<string> {
   try {
     log("=== MANUAL READY WINDOW TEST TRIGGERED ===", "scheduler");
