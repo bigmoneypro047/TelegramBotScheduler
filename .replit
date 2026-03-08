@@ -37,3 +37,8 @@ author = "agent"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[userenv]
+
+[userenv.shared]
+TELEGRAM_BOT_TOKEN = "8460790867:AAEwHAqTdAFTHXAq2zgw4x9ndngF3Ua34uU"
