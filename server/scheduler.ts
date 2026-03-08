@@ -144,17 +144,41 @@ function shuffleArray<T>(arr: T[], seed: number): T[] {
   return result;
 }
 
+function generateNaturalBotOrder(count: number, activeBotIndices: number[], seed: number): number[] {
+  const order: number[] = [];
+  let s = seed;
+  const nextRand = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s; };
+
+  for (let i = 0; i < count; i++) {
+    const r = nextRand();
+    if (i >= 2 && r % 100 < 35) {
+      const recentIdx = i - 1 - (nextRand() % Math.min(2, i));
+      order.push(order[recentIdx]);
+    } else {
+      const pick = activeBotIndices[nextRand() % activeBotIndices.length];
+      if (i > 0 && pick === order[i - 1] && r % 100 < 50) {
+        const alt = activeBotIndices[nextRand() % activeBotIndices.length];
+        order.push(alt);
+      } else {
+        order.push(pick);
+      }
+    }
+  }
+  return order;
+}
+
 function generateReadySchedule(windowIndex: number, groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3]): { botIndex: number; message: string; minuteOffset: number }[] {
   const seed = dayOfYear * 1000 + windowIndex * 100 + groupIndex;
   const shuffledMessages = shuffleArray(READY_MESSAGES, seed);
+  const botOrder = generateNaturalBotOrder(activeBotIndices.length, activeBotIndices, seed + 7);
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
 
   let s = seed + 7;
   let currentMinute = 0;
 
-  for (let i = 0; i < activeBotIndices.length; i++) {
+  for (let i = 0; i < botOrder.length; i++) {
     schedule.push({
-      botIndex: activeBotIndices[i],
+      botIndex: botOrder[i],
       message: shuffledMessages[i % shuffledMessages.length],
       minuteOffset: currentMinute,
     });
@@ -186,12 +210,13 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
   const maxMessages = Math.floor(totalMinutes / 5) + 1;
   const groupMessages = shuffled.slice(0, Math.min(maxMessages, shuffled.length));
 
+  const botOrder = generateNaturalBotOrder(groupMessages.length, activeBotIndices, seed + 999);
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
   let currentMinute = 0;
 
   for (let i = 0; i < groupMessages.length && currentMinute < totalMinutes; i++) {
     schedule.push({
-      botIndex: activeBotIndices[i % activeBotIndices.length],
+      botIndex: botOrder[i],
       message: groupMessages[i],
       minuteOffset: currentMinute,
     });
@@ -207,12 +232,14 @@ function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, acti
   const seed = dayOfYear * 50 + groupIndex * 7;
   const uniqueMessages = [...new Set(messages)];
   const shuffled = shuffleArray(uniqueMessages, seed);
+  const msgCount = Math.min(12, shuffled.length);
+  const botOrder = generateNaturalBotOrder(msgCount, activeBotIndices, seed + 77);
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
   let currentMinute = 0;
 
-  for (let i = 0; i < Math.min(12, shuffled.length) && currentMinute < 60; i++) {
+  for (let i = 0; i < msgCount && currentMinute < 60; i++) {
     schedule.push({
-      botIndex: activeBotIndices[i % activeBotIndices.length],
+      botIndex: botOrder[i],
       message: shuffled[i],
       minuteOffset: currentMinute,
     });
