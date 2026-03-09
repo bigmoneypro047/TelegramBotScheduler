@@ -640,15 +640,28 @@ async function checkPythonAvailable(): Promise<boolean> {
 }
 
 async function recoverInProgressSessions(): Promise<void> {
+  log("RECOVERY: Checking if server restarted during an active session...", "scheduler");
+
+  let groupsList: Awaited<ReturnType<typeof storage.getGroups>> = [];
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    groupsList = await getGroupsWithRetry();
+    if (groupsList.length > 0) break;
+    log(`RECOVERY: DB not ready yet (attempt ${attempt}/10), waiting 5s...`, "scheduler");
+    await sleep(5000);
+  }
+
+  if (groupsList.length === 0) {
+    log("RECOVERY: Could not load groups after 10 attempts — skipping recovery", "scheduler");
+    return;
+  }
+
+  const activeBots = await getActiveBotIndices();
   const now = getNigeriaDate();
   const hour = now.getHours();
   const minute = now.getMinutes();
   const currentMinutes = hour * 60 + minute;
   const dayOfYear = getDayOfYear();
-  const groupsList = await getGroupsWithRetry();
-  const activeBots = await getActiveBotIndices();
-
-  if (groupsList.length === 0) return;
+  log(`RECOVERY: ${groupsList.length} groups loaded, WAT time ${hour}:${minute.toString().padStart(2,'0')}, checking sessions...`, "scheduler");
 
   const morningStart = 5 * 60;
   const morningEnd = 8 * 60 + 15;
@@ -704,6 +717,10 @@ async function recoverInProgressSessions(): Promise<void> {
     } else {
       log(`RECOVERY: No remaining evening messages to schedule`, "scheduler");
     }
+  }
+
+  if (currentMinutes < morningStart || currentMinutes >= eveningEnd) {
+    log(`RECOVERY: No active session at ${hour}:${minute.toString().padStart(2,'0')} — nothing to recover`, "scheduler");
   }
 }
 
