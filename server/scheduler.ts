@@ -7,6 +7,27 @@ import { MORNING_THREADS_BY_LANG, MORNING_CHAT_MESSAGES as MORNING_CHAT_BY_LANG,
 
 const NIGERIA_TZ = "Africa/Lagos";
 
+function scheduleMessagesWithTimers(
+  allItems: { botName: string; groupName: string; message: string; delayMs: number }[],
+  sessionName: string
+): number {
+  let scheduled = 0;
+  for (const item of allItems) {
+    const msgNum = scheduled + 1;
+    const total = allItems.length;
+    setTimeout(async () => {
+      try {
+        log(`${sessionName} msg ${msgNum}/${total}: ${item.botName} → ${item.groupName}`, "scheduler");
+        await sendOneMessage(item.botName, item.groupName, item.message, sessionName);
+      } catch (err: any) {
+        log(`${sessionName} msg ${msgNum}/${total} FAILED: ${err.message}`, "scheduler");
+      }
+    }, item.delayMs);
+    scheduled++;
+  }
+  return scheduled;
+}
+
 async function getGroupsWithRetry(maxRetries = 3): Promise<Awaited<ReturnType<typeof storage.getGroups>>> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -600,6 +621,74 @@ async function checkPythonAvailable(): Promise<boolean> {
   }
 }
 
+async function recoverInProgressSessions(): Promise<void> {
+  const now = getNigeriaDate();
+  const hour = now.getHours();
+  const minute = now.getMinutes();
+  const currentMinutes = hour * 60 + minute;
+  const dayOfYear = getDayOfYear();
+  const groupsList = await getGroupsWithRetry();
+  const activeBots = await getActiveBotIndices();
+
+  if (groupsList.length === 0) return;
+
+  const morningStart = 5 * 60;
+  const morningEnd = 8 * 60 + 15;
+  if (currentMinutes >= morningStart && currentMinutes < morningEnd) {
+    const elapsedMinutes = currentMinutes - morningStart;
+    log(`RECOVERY: Server restarted during morning session (${elapsedMinutes}min elapsed). Scheduling remaining messages...`, "scheduler");
+
+    const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
+    for (let g = 0; g < groupsList.length; g++) {
+      const items = generateMorningChatSchedule(g, dayOfYear, activeBots);
+      const remaining = items.filter(item => item.minuteOffset > elapsedMinutes);
+      for (const item of remaining) {
+        allItems.push({
+          botName: `Userbot ${item.botIndex + 1}`,
+          groupName: groupsList[g].name,
+          message: item.message,
+          delayMs: (item.minuteOffset - elapsedMinutes) * 60 * 1000,
+        });
+      }
+    }
+    allItems.sort((a, b) => a.delayMs - b.delayMs);
+    if (allItems.length > 0) {
+      const count = scheduleMessagesWithTimers(allItems, "morning_chat_recovery");
+      log(`RECOVERY: ${count} morning messages scheduled (skipped first ${elapsedMinutes} min)`, "scheduler");
+    } else {
+      log(`RECOVERY: No remaining morning messages to schedule`, "scheduler");
+    }
+  }
+
+  const eveningStart = 15 * 60 + 25;
+  const eveningEnd = 18 * 60 + 55;
+  if (currentMinutes >= eveningStart && currentMinutes < eveningEnd) {
+    const elapsedMinutes = currentMinutes - eveningStart;
+    log(`RECOVERY: Server restarted during evening session (${elapsedMinutes}min elapsed). Scheduling remaining messages...`, "scheduler");
+
+    const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
+    for (let g = 0; g < groupsList.length; g++) {
+      const items = generateEveningMessages(g, dayOfYear, groupsList.length, activeBots);
+      const remaining = items.filter(item => item.minuteOffset > elapsedMinutes);
+      for (const item of remaining) {
+        allItems.push({
+          botName: `Userbot ${item.botIndex + 1}`,
+          groupName: groupsList[g].name,
+          message: item.message,
+          delayMs: (item.minuteOffset - elapsedMinutes) * 60 * 1000,
+        });
+      }
+    }
+    allItems.sort((a, b) => a.delayMs - b.delayMs);
+    if (allItems.length > 0) {
+      const count = scheduleMessagesWithTimers(allItems, "evening_chat_recovery");
+      log(`RECOVERY: ${count} evening messages scheduled (skipped first ${elapsedMinutes} min)`, "scheduler");
+    } else {
+      log(`RECOVERY: No remaining evening messages to schedule`, "scheduler");
+    }
+  }
+}
+
 export function startScheduler() {
   if (isSchedulerRunning) return;
   isSchedulerRunning = true;
@@ -607,6 +696,10 @@ export function startScheduler() {
 
   checkPythonAvailable().then(ok => {
     log(`Python3/Telethon available: ${ok}`, "scheduler");
+  });
+
+  recoverInProgressSessions().catch(err => {
+    log(`Session recovery failed: ${err.message}`, "scheduler");
   });
 
   const heartbeatJob = cron.schedule("* * * * *", () => {
@@ -651,16 +744,10 @@ export function startScheduler() {
         }
       }
       allItems.sort((a, b) => a.delayMs - b.delayMs);
-      log(`Morning chat: ${allItems.length} total messages queued`, "scheduler");
+      log(`Morning chat: ${allItems.length} total messages queued via setTimeout`, "scheduler");
 
-      let lastDelay = 0;
-      for (const item of allItems) {
-        const wait = item.delayMs - lastDelay;
-        if (wait > 0) await sleep(wait);
-        lastDelay = item.delayMs;
-        await sendOneMessage(item.botName, item.groupName, item.message, "morning_chat");
-      }
-      log("=== MORNING CHAT COMPLETE ===", "scheduler");
+      const count = scheduleMessagesWithTimers(allItems, "morning_chat");
+      log(`Morning chat: ${count} messages scheduled, last fires at +${allItems[allItems.length - 1]?.delayMs / 60000 || 0} min`, "scheduler");
     } catch (err: any) {
       log(`CRITICAL: Morning chat crashed: ${err.message}\n${err.stack}`, "scheduler");
     }
@@ -690,16 +777,10 @@ export function startScheduler() {
           }
         }
         allItems.sort((a, b) => a.delayMs - b.delayMs);
-        log(`Ready window ${w + 1}: ${allItems.length} total messages queued`, "scheduler");
+        log(`Ready window ${w + 1}: ${allItems.length} total messages queued via setTimeout`, "scheduler");
 
-        let lastDelay = 0;
-        for (const item of allItems) {
-          const wait = item.delayMs - lastDelay;
-          if (wait > 0) await sleep(wait);
-          lastDelay = item.delayMs;
-          await sendOneMessage(item.botName, item.groupName, item.message, `ready_window_${w + 1}`);
-        }
-        log(`=== READY WINDOW ${w + 1} COMPLETE ===`, "scheduler");
+        const count = scheduleMessagesWithTimers(allItems, `ready_window_${w + 1}`);
+        log(`Ready window ${w + 1}: ${count} messages scheduled`, "scheduler");
       } catch (err: any) {
         log(`CRITICAL: Ready window ${w + 1} crashed: ${err.message}\n${err.stack}`, "scheduler");
       }
@@ -728,16 +809,10 @@ export function startScheduler() {
         }
       }
       allItems.sort((a, b) => a.delayMs - b.delayMs);
-      log(`Done session: ${allItems.length} total messages queued`, "scheduler");
+      log(`Done session: ${allItems.length} total messages queued via setTimeout`, "scheduler");
 
-      let lastDelay = 0;
-      for (const item of allItems) {
-        const wait = item.delayMs - lastDelay;
-        if (wait > 0) await sleep(wait);
-        lastDelay = item.delayMs;
-        await sendOneMessage(item.botName, item.groupName, item.message, "done_session");
-      }
-      log("=== DONE SESSION COMPLETE ===", "scheduler");
+      const count = scheduleMessagesWithTimers(allItems, "done_session");
+      log(`Done session: ${count} messages scheduled`, "scheduler");
     } catch (err: any) {
       log(`CRITICAL: Done session crashed: ${err.message}\n${err.stack}`, "scheduler");
     }
@@ -765,16 +840,10 @@ export function startScheduler() {
         }
       }
       allItems.sort((a, b) => a.delayMs - b.delayMs);
-      log(`Evening chat: ${allItems.length} total messages queued`, "scheduler");
+      log(`Evening chat: ${allItems.length} total messages queued via setTimeout`, "scheduler");
 
-      let lastDelay = 0;
-      for (const item of allItems) {
-        const wait = item.delayMs - lastDelay;
-        if (wait > 0) await sleep(wait);
-        lastDelay = item.delayMs;
-        await sendOneMessage(item.botName, item.groupName, item.message, "evening_chat");
-      }
-      log("=== EVENING CHAT COMPLETE ===", "scheduler");
+      const count = scheduleMessagesWithTimers(allItems, "evening_chat");
+      log(`Evening chat: ${count} messages scheduled, last fires at +${allItems[allItems.length - 1]?.delayMs / 60000 || 0} min`, "scheduler");
     } catch (err: any) {
       log(`CRITICAL: Evening chat crashed: ${err.message}\n${err.stack}`, "scheduler");
     }
@@ -830,17 +899,11 @@ export async function triggerEveningChatNow(): Promise<string> {
       }
     }
     allItems.sort((a, b) => a.delayMs - b.delayMs);
-    log(`Manual evening: ${allItems.length} messages queued (starting now, offset was ${currentMinutesFromStart}min)`, "scheduler");
+    log(`Manual evening: ${allItems.length} messages queued via setTimeout (offset was ${currentMinutesFromStart}min)`, "scheduler");
 
-    let lastDelay = 0;
-    for (const item of allItems) {
-      const wait = item.delayMs - lastDelay;
-      if (wait > 0) await sleep(wait);
-      lastDelay = item.delayMs;
-      await sendOneMessage(item.botName, item.groupName, item.message, "evening_chat_manual");
-    }
-    log("=== MANUAL EVENING CHAT COMPLETE ===", "scheduler");
-    return `Dispatched ${allItems.length} messages across ${groupsList.length} groups`;
+    const count = scheduleMessagesWithTimers(allItems, "evening_chat_manual");
+    log(`Manual evening: ${count} messages scheduled`, "scheduler");
+    return `Scheduled ${count} messages across ${groupsList.length} groups`;
   } catch (err: any) {
     log(`Manual evening FAILED: ${err.message}\n${err.stack}`, "scheduler");
     return `Error: ${err.message}`;
@@ -858,20 +921,17 @@ export async function triggerMorningTestNow(): Promise<string> {
 
     const group = groupsList[0];
     const items = generateMorningChatSchedule(0, dayOfYear, activeBots);
-    log(`Morning test: ${group.name} — ${items.length} messages over ${items[items.length - 1]?.minuteOffset || 0} minutes`, "scheduler");
+    const allItems = items.map(item => ({
+      botName: `Userbot ${item.botIndex + 1}`,
+      groupName: group.name,
+      message: item.message,
+      delayMs: item.minuteOffset * 60 * 1000,
+    }));
+    log(`Morning test: ${group.name} — ${allItems.length} messages`, "scheduler");
 
-    let lastDelay = 0;
-    for (const item of items) {
-      const delayMs = item.minuteOffset * 60 * 1000;
-      const wait = delayMs - lastDelay;
-      if (wait > 0) await sleep(wait);
-      lastDelay = delayMs;
-      const botName = `Userbot ${item.botIndex + 1}`;
-      await sendOneMessage(botName, group.name, item.message, "morning_test");
-    }
-
-    log("=== MORNING TEST COMPLETE ===", "scheduler");
-    return `Sent ${items.length} messages to ${group.name} over ${items[items.length - 1]?.minuteOffset || 0} minutes`;
+    const count = scheduleMessagesWithTimers(allItems, "morning_test");
+    log(`Morning test: ${count} messages scheduled over ${items[items.length - 1]?.minuteOffset || 0} minutes`, "scheduler");
+    return `Scheduled ${count} messages to ${group.name} over ${items[items.length - 1]?.minuteOffset || 0} minutes`;
   } catch (err: any) {
     log(`Morning test FAILED: ${err.message}\n${err.stack}`, "scheduler");
     return `Error: ${err.message}`;

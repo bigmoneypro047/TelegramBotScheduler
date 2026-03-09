@@ -47,7 +47,9 @@ A web dashboard for managing automated Telegram messaging across 5 groups using 
 - Full translations in `server/messages.ts`
 
 ## Reliability System
-- **Self-ping keepalive**: Pings `/api/health` every 4 minutes to prevent sleep (`server/watchdog.ts`)
+- **Timer-based scheduling**: All sessions (morning/evening/ready/done) use `setTimeout` per message instead of sleep loops — restart-resistant
+- **Startup recovery**: `recoverInProgressSessions()` detects mid-session restart and schedules remaining messages automatically
+- **Self-ping keepalive**: Pings `/api/health` every 2 seconds to prevent sleep (`server/watchdog.ts`)
 - **Watchdog monitor**: Checks server health every 5 minutes, logs uptime stats
 - **Retry logic**: All Telegram sends retry up to 3 times (delays: 5s, 15s, 30s)
 - **Crash protection**: `safeExecuteScheduledMessage` wraps all sends with try/catch
