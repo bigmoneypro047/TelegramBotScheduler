@@ -7,104 +7,245 @@ import re
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
-GREETING_PATTERNS = [
-    r'\bgood\s*morning\b', r'\bgood\s*afternoon\b', r'\bgood\s*evening\b',
-    r'\bgood\s*night\b', r'\bhello\b', r'\bhi\s+everyone\b', r'\bhi\s+all\b',
-    r'\bhey\s+everyone\b', r'\bhey\s+all\b', r'\bgreetings\b',
-    r'\bbuenos?\s*d[ií]as?\b', r'\bbuenas?\s*tardes?\b', r'\bbuenas?\s*noches?\b',
-    r'\bhola\s+a\s+todos\b', r'\bhola\b',
-    r'\bصباح\s*الخير\b', r'\bمساء\s*الخير\b', r'\bمرحبا\b', r'\bأهلا\b', r'\bسلام\b',
-    r'\bselamat\s*pagi\b', r'\bselamat\s*siang\b', r'\bselamat\s*sore\b', r'\bselamat\s*malam\b',
-    r'\bmagandang\s*umaga\b', r'\bmagandang\s*hapon\b', r'\bmagandang\s*gabi\b',
-    r'\bxin\s*ch[àa]o\b', r'\bchào\b',
-    r'\bgm\b', r'\bgn\b',
-]
+LANG_GREETING_PATTERNS = {
+    "english": {
+        "morning": [r'\bgood\s*morning\b', r'\bgm\b'],
+        "afternoon": [r'\bgood\s*afternoon\b'],
+        "evening": [r'\bgood\s*evening\b', r'\bgood\s*night\b', r'\bgn\b'],
+        "general": [r'\bhello\b', r'\bhi\s+everyone\b', r'\bhi\s+all\b', r'\bhey\s+everyone\b', r'\bhey\s+all\b', r'\bgreetings\b', r'\bhi\s+there\b', r'\bhey\s+there\b'],
+    },
+    "spanish": {
+        "morning": [r'\bbuenos?\s*d[ií]as?\b'],
+        "afternoon": [r'\bbuenas?\s*tardes?\b'],
+        "evening": [r'\bbuenas?\s*noches?\b'],
+        "general": [r'\bhola\s+a\s+todos\b', r'\bhola\b', r'\bsaludos\b'],
+    },
+    "arabic": {
+        "morning": [r'\bصباح\s*الخير\b', r'\bصباح\s*النور\b'],
+        "evening": [r'\bمساء\s*الخير\b', r'\bمساء\s*النور\b'],
+        "general": [r'\bمرحبا\b', r'\bأهلا\b', r'\bسلام\s*عليكم\b', r'\bسلام\b', r'\bالسلام\s*عليكم\b'],
+    },
+    "indonesian": {
+        "morning": [r'\bselamat\s*pagi\b'],
+        "afternoon": [r'\bselamat\s*siang\b', r'\bselamat\s*sore\b'],
+        "evening": [r'\bselamat\s*malam\b'],
+        "general": [r'\bhalo\s+semua\b', r'\bhalo\b', r'\bhai\s+semua\b'],
+    },
+    "filipino": {
+        "morning": [r'\bmagandang\s*umaga\b'],
+        "afternoon": [r'\bmagandang\s*hapon\b', r'\bmagandang\s*tanghali\b'],
+        "evening": [r'\bmagandang\s*gabi\b'],
+        "general": [r'\bkamusta\b', r'\bmabuhay\b', r'\bkumusta\b'],
+    },
+    "vietnamese": {
+        "morning": [r'\bchào\s+buổi\s+sáng\b', r'\bxin\s*ch[àa]o\s+buổi\s+sáng\b'],
+        "evening": [r'\bchào\s+buổi\s+tối\b', r'\bxin\s*ch[àa]o\s+buổi\s+tối\b'],
+        "general": [r'\bxin\s*ch[àa]o\b', r'\bchào\s+mọi\s+người\b', r'\bchào\b'],
+    },
+}
 
-NEWCOMER_PATTERNS = [
-    r"\bi[''`]?m\s+new\s+here\b", r'\bjust\s+joined\b', r'\bnew\s+member\b',
-    r'\bnew\s+here\b', r'\bjust\s+started\b', r'\bfirst\s+time\s+here\b',
-    r'\bsoy\s+nuev[oa]\b', r'\bacabo\s+de\s+unirme\b',
-    r'\bعضو\s*جديد\b', r'\bانضممت\b',
-    r'\bbaru\s+bergabung\b', r'\bbagong\s+kasali\b',
-    r'\bmới\s+tham\s+gia\b',
-]
+LANG_NEWCOMER_PATTERNS = {
+    "english": [r"\bi[''`]?m\s+new\s+here\b", r'\bjust\s+joined\b', r'\bnew\s+member\b', r'\bnew\s+here\b', r'\bjust\s+started\b', r'\bfirst\s+time\s+here\b'],
+    "spanish": [r'\bsoy\s+nuev[oa]\b', r'\bacabo\s+de\s+unirme\b', r'\bnuev[oa]\s+aqu[ií]\b'],
+    "arabic": [r'\bعضو\s*جديد\b', r'\bانضممت\b', r'\bأنا\s+جديد\b'],
+    "indonesian": [r'\bbaru\s+bergabung\b', r'\banggota\s+baru\b', r'\bbaru\s+di\s+sini\b'],
+    "filipino": [r'\bbagong\s+kasali\b', r'\bbago\s+lang\s+ako\b', r'\bbagong\s+miyembro\b'],
+    "vietnamese": [r'\bmới\s+tham\s+gia\b', r'\bthành\s+viên\s+mới\b', r'\bmới\s+vào\b'],
+}
 
-MORNING_RESPONSES = [
-    "Good morning!", "Good morning everyone!", "Morning!", "GM!",
-    "Good morning, hope everyone has a great day!", "Morning all!",
-    "Buenos días!", "صباح الخير!", "Selamat pagi!", "Magandang umaga!",
-    "Good morning! Ready for another great day!", "Hey, good morning!",
-    "Morning! Let's make today count!", "GM everyone!",
-]
-
-AFTERNOON_RESPONSES = [
-    "Good afternoon!", "Good afternoon everyone!", "Afternoon!",
-    "Good afternoon, hope the day is going well!", "Hey, good afternoon!",
-    "Buenas tardes!", "مساء الخير!", "Selamat siang!",
-    "Magandang hapon!", "Good afternoon all!",
-]
-
-EVENING_RESPONSES = [
-    "Good evening!", "Good evening everyone!", "Evening!",
-    "Good evening, hope you had a great day!", "Hey, good evening!",
-    "Buenas noches!", "مساء الخير!", "Selamat malam!",
-    "Magandang gabi!", "Good evening all!",
-]
-
-GENERAL_GREETING_RESPONSES = [
-    "Hello!", "Hey!", "Hi there!", "Hello everyone!",
-    "Hey, welcome!", "Hi!", "Greetings!", "Hello there!",
-    "Hey! Great to see you!", "Hi everyone!",
-]
-
-WELCOME_RESPONSES = [
-    "Welcome! You're going to love it here!",
-    "Welcome to the group! Great to have you!",
-    "Hey welcome! Feel free to ask any questions!",
-    "Welcome! You made a great decision joining us!",
-    "Welcome aboard! This community is amazing!",
-    "Hey, welcome! Glad you're here!",
-    "Welcome! Stick around and you'll see great results!",
-    "Welcome! You're in good hands here!",
-    "Hey welcome! The team here is really supportive!",
-    "Welcome to the family! Let's make money together!",
-]
+RESPONSES = {
+    "english": {
+        "morning": [
+            "Good morning!", "Good morning everyone!", "Morning!",
+            "Good morning, hope everyone has a great day!",
+            "Morning! Let's make today count!", "GM everyone!",
+            "Hey, good morning!", "Morning all!",
+        ],
+        "afternoon": [
+            "Good afternoon!", "Good afternoon everyone!", "Afternoon!",
+            "Good afternoon, hope the day is going well!",
+            "Hey, good afternoon!", "Good afternoon all!",
+        ],
+        "evening": [
+            "Good evening!", "Good evening everyone!", "Evening!",
+            "Good evening, hope you had a great day!",
+            "Hey, good evening!", "Good evening all!",
+        ],
+        "general": [
+            "Hello!", "Hey!", "Hi there!", "Hello everyone!",
+            "Hey, welcome!", "Hi!", "Greetings!", "Hello there!",
+            "Hey! Great to see you!", "Hi everyone!",
+        ],
+        "newcomer": [
+            "Welcome! You're going to love it here!",
+            "Welcome to the group! Great to have you!",
+            "Hey welcome! Feel free to ask any questions!",
+            "Welcome! You made a great decision joining us!",
+            "Welcome aboard! This community is amazing!",
+            "Hey, welcome! Glad you're here!",
+            "Welcome! Stick around, you'll love it!",
+            "Welcome! You're in good hands here!",
+        ],
+    },
+    "spanish": {
+        "morning": [
+            "¡Buenos días!", "¡Buenos días a todos!", "¡Buen día!",
+            "¡Buenos días! Espero que tengan un gran día!",
+            "Buenos días, ¡a darle con todo hoy!",
+        ],
+        "afternoon": [
+            "¡Buenas tardes!", "¡Buenas tardes a todos!",
+            "¡Buenas tardes! Espero que el día vaya bien!",
+            "¡Hola, buenas tardes!",
+        ],
+        "evening": [
+            "¡Buenas noches!", "¡Buenas noches a todos!",
+            "¡Buenas noches! Espero que hayan tenido un buen día!",
+            "¡Hola, buenas noches!",
+        ],
+        "general": [
+            "¡Hola!", "¡Hola a todos!", "¡Saludos!",
+            "¡Hola! ¿Cómo están?", "¡Hey, qué tal!",
+            "¡Hola! Bienvenidos!",
+        ],
+        "newcomer": [
+            "¡Bienvenido! ¡Te va a encantar esto!",
+            "¡Bienvenido al grupo! ¡Qué bueno tenerte aquí!",
+            "¡Hola, bienvenido! Pregunta lo que necesites!",
+            "¡Bienvenido! Gran decisión unirte!",
+            "¡Bienvenido! Esta comunidad es increíble!",
+        ],
+    },
+    "arabic": {
+        "morning": [
+            "صباح الخير!", "صباح النور!", "صباح الخير للجميع!",
+            "صباح الخير! يوم جميل للجميع إن شاء الله!",
+            "صباح الورد!",
+        ],
+        "evening": [
+            "مساء الخير!", "مساء النور!", "مساء الخير للجميع!",
+            "مساء الخير! أتمنى لكم مساء جميل!",
+        ],
+        "general": [
+            "مرحبا!", "أهلا وسهلا!", "السلام عليكم!",
+            "أهلا بالجميع!", "مرحبا بكم!",
+            "هلا!", "حياكم الله!",
+        ],
+        "newcomer": [
+            "أهلا وسهلا! نورت المجموعة!",
+            "مرحبا بك! سعيدين بانضمامك!",
+            "أهلا! لا تتردد في السؤال عن أي شيء!",
+            "حياك الله! قرار ممتاز إنك انضممت!",
+            "مرحبا! المجتمع هنا رائع!",
+        ],
+    },
+    "indonesian": {
+        "morning": [
+            "Selamat pagi!", "Selamat pagi semuanya!", "Pagi!",
+            "Selamat pagi! Semoga harinya menyenangkan!",
+            "Pagi semua! Semangat hari ini!",
+        ],
+        "afternoon": [
+            "Selamat siang!", "Selamat siang semuanya!",
+            "Selamat sore!", "Siang semua!",
+        ],
+        "evening": [
+            "Selamat malam!", "Selamat malam semuanya!",
+            "Malam! Semoga hari ini menyenangkan!",
+        ],
+        "general": [
+            "Halo!", "Halo semua!", "Hai!",
+            "Halo! Apa kabar?", "Hai semua!",
+            "Halo semuanya!",
+        ],
+        "newcomer": [
+            "Selamat datang! Pasti betah di sini!",
+            "Selamat datang di grup! Senang ada kamu!",
+            "Halo, selamat datang! Jangan ragu bertanya ya!",
+            "Selamat datang! Keputusan yang tepat bergabung!",
+            "Welcome! Komunitas di sini keren banget!",
+        ],
+    },
+    "filipino": {
+        "morning": [
+            "Magandang umaga!", "Magandang umaga sa lahat!",
+            "Magandang umaga! Sana maganda ang araw niyo!",
+            "Good morning! Magandang umaga!",
+        ],
+        "afternoon": [
+            "Magandang hapon!", "Magandang hapon sa lahat!",
+            "Magandang tanghali!", "Hapon na! Kamusta kayo?",
+        ],
+        "evening": [
+            "Magandang gabi!", "Magandang gabi sa lahat!",
+            "Magandang gabi! Sana maganda ang gabi niyo!",
+        ],
+        "general": [
+            "Kamusta!", "Mabuhay!", "Kamusta kayong lahat!",
+            "Hello! Kamusta?", "Hey! Mabuhay!",
+        ],
+        "newcomer": [
+            "Welcome! Magugustuhan mo dito!",
+            "Welcome sa grupo! Masaya kaming nandito ka!",
+            "Hey welcome! Magtanong lang kung may kailangan!",
+            "Welcome! Magandang desisyon na sumali ka!",
+            "Mabuhay! Ang galing ng community na ito!",
+        ],
+    },
+    "vietnamese": {
+        "morning": [
+            "Chào buổi sáng!", "Chào buổi sáng mọi người!",
+            "Chào buổi sáng! Chúc mọi người ngày tốt lành!",
+        ],
+        "evening": [
+            "Chào buổi tối!", "Chào buổi tối mọi người!",
+            "Chào buổi tối! Chúc mọi người buổi tối vui vẻ!",
+        ],
+        "general": [
+            "Xin chào!", "Chào mọi người!", "Xin chào tất cả!",
+            "Chào! Mọi người khỏe không?", "Hello! Xin chào!",
+        ],
+        "newcomer": [
+            "Chào mừng! Bạn sẽ thích ở đây!",
+            "Chào mừng đến nhóm! Rất vui có bạn!",
+            "Xin chào, chào mừng! Cứ hỏi nếu cần nhé!",
+            "Chào mừng! Quyết định tuyệt vời khi tham gia!",
+            "Chào mừng! Cộng đồng ở đây rất tuyệt!",
+        ],
+    },
+}
 
 last_responders = []
 
 def classify_message(text):
     text_lower = text.lower().strip()
     if len(text_lower) > 200:
-        return None
+        return None, None
 
-    for pat in NEWCOMER_PATTERNS:
-        if re.search(pat, text_lower, re.IGNORECASE):
-            return "newcomer"
+    for lang, patterns in LANG_NEWCOMER_PATTERNS.items():
+        for pat in patterns:
+            if re.search(pat, text_lower, re.IGNORECASE):
+                return "newcomer", lang
 
-    for pat in GREETING_PATTERNS:
-        if re.search(pat, text_lower, re.IGNORECASE):
-            if re.search(r'morning', text_lower, re.IGNORECASE) or re.search(r'umaga|pagi|صباح|días', text_lower, re.IGNORECASE):
-                return "morning"
-            elif re.search(r'afternoon|hapon|siang|tardes', text_lower, re.IGNORECASE):
-                return "afternoon"
-            elif re.search(r'evening|night|gabi|malam|noches', text_lower, re.IGNORECASE):
-                return "evening"
-            else:
-                return "general"
+    for lang, time_groups in LANG_GREETING_PATTERNS.items():
+        for time_of_day, patterns in time_groups.items():
+            for pat in patterns:
+                if re.search(pat, text_lower, re.IGNORECASE):
+                    return time_of_day, lang
 
-    return None
+    return None, None
 
-def get_response(msg_type):
-    if msg_type == "morning":
-        return random.choice(MORNING_RESPONSES)
-    elif msg_type == "afternoon":
-        return random.choice(AFTERNOON_RESPONSES)
-    elif msg_type == "evening":
-        return random.choice(EVENING_RESPONSES)
-    elif msg_type == "newcomer":
-        return random.choice(WELCOME_RESPONSES)
-    else:
-        return random.choice(GENERAL_GREETING_RESPONSES)
+def get_response(msg_type, lang):
+    lang_responses = RESPONSES.get(lang, RESPONSES["english"])
+    pool = lang_responses.get(msg_type)
+    if not pool:
+        if msg_type in ("afternoon",) and lang in ("arabic", "vietnamese"):
+            pool = lang_responses.get("evening", lang_responses.get("general"))
+        else:
+            pool = lang_responses.get("general")
+    if not pool:
+        pool = RESPONSES["english"].get(msg_type, RESPONSES["english"]["general"])
+    return random.choice(pool)
 
 def pick_responders(available_indices, count=3):
     global last_responders
@@ -206,8 +347,8 @@ async def main():
             if not text or len(text.strip()) < 2:
                 return
 
-            msg_type = classify_message(text)
-            if not msg_type:
+            msg_type, lang = classify_message(text)
+            if not msg_type or not lang:
                 return
 
             cooldown_key = f"{chat.id}_{msg_type}"
@@ -227,16 +368,17 @@ async def main():
             sender_name = sender.first_name or "Someone"
             print(json.dumps({
                 "type": "greeting_detected",
-                "msg": f"{sender_name} said '{text[:50]}' ({msg_type}) in chat {chat.id}",
+                "msg": f"{sender_name} said '{text[:50]}' ({msg_type}/{lang}) in chat {chat.id}",
                 "chatId": chat_id_str,
                 "msgType": msg_type,
+                "lang": lang,
             }), flush=True)
 
             for resp_idx in responders:
                 delay = random.randint(15, 45)
                 await asyncio.sleep(delay)
 
-                response = get_response(msg_type)
+                response = get_response(msg_type, lang)
                 try:
                     resp_client = clients[bot_indices.index(resp_idx)] if resp_idx in bot_indices else None
                     if resp_client is None:
@@ -253,7 +395,7 @@ async def main():
                         await resp_client.send_message(resp_entity, response)
                         print(json.dumps({
                             "type": "greeting_sent",
-                            "msg": f"Bot {resp_idx+1} replied '{response}' in chat {chat.id}",
+                            "msg": f"Bot {resp_idx+1} replied '{response}' ({lang}) in chat {chat.id}",
                             "botIndex": resp_idx,
                             "response": response,
                             "chatId": chat_id_str,
