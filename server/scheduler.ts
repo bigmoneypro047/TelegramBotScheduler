@@ -938,6 +938,40 @@ export async function triggerMorningTestNow(): Promise<string> {
   }
 }
 
+export async function triggerMorningSpeedTest(): Promise<string> {
+  try {
+    log("=== SPEED TEST: 40 MORNING MSGS IN 1 HOUR (GROUP 1) ===", "scheduler");
+    const dayOfYear = getDayOfYear();
+    const groupsList = await getGroupsWithRetry();
+    const activeBots = await getActiveBotIndices();
+
+    if (groupsList.length === 0) return "No groups configured";
+
+    const group = groupsList[0];
+    const items = generateMorningChatSchedule(0, dayOfYear, activeBots);
+    const totalMessages = items.length;
+    const totalDurationMs = 60 * 60 * 1000;
+    const intervalMs = Math.floor(totalDurationMs / (totalMessages - 1 || 1));
+
+    const allItems = items.map((item, idx) => ({
+      botName: `Userbot ${item.botIndex + 1}`,
+      groupName: group.name,
+      message: item.message,
+      delayMs: idx * intervalMs,
+    }));
+
+    log(`Speed test: ${totalMessages} msgs to ${group.name}, ~${Math.round(intervalMs/1000)}s apart, total 60 min`, "scheduler");
+
+    const count = scheduleMessagesWithTimers(allItems, "morning_speed_test");
+    const intervalSec = Math.round(intervalMs / 1000);
+    log(`Speed test: ${count} messages scheduled, one every ~${intervalSec}s for 60 min`, "scheduler");
+    return `Speed test started: ${count} messages to ${group.name}, one every ~${intervalSec}s for the next 60 minutes`;
+  } catch (err: any) {
+    log(`Speed test FAILED: ${err.message}\n${err.stack}`, "scheduler");
+    return `Error: ${err.message}`;
+  }
+}
+
 export async function triggerReadyWindowNow(): Promise<string> {
   try {
     log("=== MANUAL READY WINDOW TEST TRIGGERED ===", "scheduler");
