@@ -7,14 +7,32 @@ import { MORNING_THREADS_BY_LANG, MORNING_CHAT_MESSAGES as MORNING_CHAT_BY_LANG,
 
 const NIGERIA_TZ = "Africa/Lagos";
 
+const GROUP_STAGGER_CACHE = new Map<string, number>();
+
+function getGroupStaggerMs(groupName: string, groupIndex: number): number {
+  const key = groupName;
+  if (GROUP_STAGGER_CACHE.has(key)) return GROUP_STAGGER_CACHE.get(key)!;
+  const staggerMs = groupIndex * (60000 + Math.floor(Math.random() * 60000));
+  GROUP_STAGGER_CACHE.set(key, staggerMs);
+  return staggerMs;
+}
+
 function scheduleMessagesWithTimers(
   allItems: { botName: string; groupName: string; message: string; delayMs: number }[],
   sessionName: string
 ): number {
+  const groupNames = [...new Set(allItems.map(i => i.groupName))];
+  const groupStagger = new Map<string, number>();
+  groupNames.forEach((name, idx) => {
+    groupStagger.set(name, idx * (60000 + Math.floor(Math.random() * 60000)));
+  });
+
   let scheduled = 0;
   for (const item of allItems) {
     const msgNum = scheduled + 1;
     const total = allItems.length;
+    const stagger = groupStagger.get(item.groupName) || 0;
+    const finalDelay = item.delayMs + stagger;
     setTimeout(async () => {
       try {
         log(`${sessionName} msg ${msgNum}/${total}: ${item.botName} → ${item.groupName}`, "scheduler");
@@ -22,7 +40,7 @@ function scheduleMessagesWithTimers(
       } catch (err: any) {
         log(`${sessionName} msg ${msgNum}/${total} FAILED: ${err.message}`, "scheduler");
       }
-    }, item.delayMs);
+    }, finalDelay);
     scheduled++;
   }
   return scheduled;
