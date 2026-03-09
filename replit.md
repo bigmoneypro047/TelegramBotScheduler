@@ -16,6 +16,8 @@ A web dashboard for managing automated Telegram messaging across 5 groups using 
 - `server/routes.ts` - API endpoints for CRUD, scheduler control, Telethon login
 - `server/storage.ts` - Database storage layer
 - `server/telegram_sender.py` - Python Telethon script for userbot operations (send, login)
+- `server/greeting_listener.py` - Persistent Telethon listener for greeting/newcomer auto-responses
+- `server/greetingListener.ts` - TypeScript wrapper managing the Python greeting listener process
 - `client/src/pages/dashboard.tsx` - Main dashboard with status + controls
 - `client/src/pages/configuration.tsx` - Bot credentials and group setup
 - `client/src/pages/schedule.tsx` - Full daily schedule visualization
@@ -45,6 +47,17 @@ A web dashboard for managing automated Telegram messaging across 5 groups using 
 - **Main bot message rotation (7 languages)**: English, Spanish, French, Arabic, Filipino, Indonesian, Urdu
 - **Morning/Evening conversation rotation (5 languages)**: English, Spanish, Arabic, Indonesian, Filipino (5-day cycle via `dayOfYear % 5`)
 - Full translations in `server/messages.ts`
+
+## Greeting Listener (Auto-Response)
+- Persistent Telethon listener monitors all 5 groups for greetings and newcomers
+- Detects: good morning/afternoon/evening, hello, hi everyone, I'm new here, etc. (in all 6 languages)
+- 3 random userbots respond to each greeting, with 15-45 second gaps between responses
+- Bot rotation: tracks last 3 responders, ensures next 3 are different bots
+- 2-minute cooldown per group per greeting type to avoid spam
+- Auto-starts 15s after server boot via watchdog
+- Auto-restarts on crash with exponential backoff (30s, 60s, 90s... up to 5min)
+- Dashboard card shows status with start/stop controls
+- API: GET `/api/greeting-listener`, POST `/api/greeting-listener/start`, POST `/api/greeting-listener/stop`
 
 ## Reliability System
 - **Timer-based scheduling**: All sessions (morning/evening/ready/done) use `setTimeout` per message instead of sleep loops — restart-resistant

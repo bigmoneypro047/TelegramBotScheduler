@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { startScheduler, stopScheduler, getSchedulerStatus, getFullScheduleForToday, triggerReadyWindowNow, triggerEveningChatNow, triggerMorningTestNow, triggerMorningSpeedTest } from "./scheduler";
 import { getWatchdogStatus } from "./watchdog";
+import { startGreetingListener, stopGreetingListener, getGreetingListenerStatus } from "./greetingListener";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -367,6 +368,28 @@ export async function registerRoutes(
 
   app.get("/api/watchdog", async (_req, res) => {
     res.json(getWatchdogStatus());
+  });
+
+  app.get("/api/greeting-listener", async (_req, res) => {
+    res.json(getGreetingListenerStatus());
+  });
+
+  app.post("/api/greeting-listener/start", async (_req, res) => {
+    try {
+      const result = await startGreetingListener();
+      if (result.started) {
+        res.json({ success: true, status: getGreetingListenerStatus() });
+      } else {
+        res.json({ success: false, reason: result.reason, status: getGreetingListenerStatus() });
+      }
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/greeting-listener/stop", async (_req, res) => {
+    stopGreetingListener();
+    res.json({ success: true, status: getGreetingListenerStatus() });
   });
 
   return httpServer;

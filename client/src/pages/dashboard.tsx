@@ -15,6 +15,7 @@ import {
   Activity,
   Zap,
   Radio,
+  HandMetal,
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -69,6 +70,31 @@ export default function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/userbots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
       toast({ title: "Defaults created", description: "4 userbots and 6 groups have been set up." });
+    },
+  });
+
+  const { data: greetingStatus } = useQuery<{
+    isRunning: boolean;
+    restartCount: number;
+    lastStartTime: string | null;
+  }>({
+    queryKey: ["/api/greeting-listener"],
+    refetchInterval: 10000,
+  });
+
+  const startGreetingMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/greeting-listener/start"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/greeting-listener"] });
+      toast({ title: "Greeting listener started", description: "Userbots will now respond to greetings in groups." });
+    },
+  });
+
+  const stopGreetingMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/greeting-listener/stop"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/greeting-listener"] });
+      toast({ title: "Greeting listener stopped" });
     },
   });
 
@@ -185,6 +211,57 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <Card data-testid="card-greeting-listener">
+        <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Greeting Listener</CardTitle>
+          <HandMetal className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div
+              className={`w-2 h-2 rounded-full ${greetingStatus?.isRunning ? "bg-status-online animate-pulse" : "bg-status-offline"}`}
+            />
+            <span className="text-sm font-semibold" data-testid="text-greeting-status">
+              {greetingStatus?.isRunning ? "Active" : "Inactive"}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {greetingStatus?.isRunning
+                ? "3 bots respond to greetings"
+                : "Not monitoring groups"}
+            </span>
+          </div>
+          <div className="flex gap-2">
+            {greetingStatus?.isRunning ? (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => stopGreetingMutation.mutate()}
+                disabled={stopGreetingMutation.isPending}
+                data-testid="button-stop-greeting"
+              >
+                <Square className="w-3 h-3 mr-1" />
+                Stop
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={() => startGreetingMutation.mutate()}
+                disabled={startGreetingMutation.isPending}
+                data-testid="button-start-greeting"
+              >
+                <Play className="w-3 h-3 mr-1" />
+                Start
+              </Button>
+            )}
+          </div>
+          {greetingStatus?.restartCount ? (
+            <p className="text-xs text-muted-foreground">
+              Auto-restarts: {greetingStatus.restartCount}
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2" data-testid="card-controls">

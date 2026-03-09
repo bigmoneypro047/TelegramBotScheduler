@@ -1,5 +1,6 @@
 import { log } from "./index";
 import { startScheduler, getSchedulerStatus } from "./scheduler";
+import { startGreetingListener, getGreetingListenerStatus } from "./greetingListener";
 
 let selfPingInterval: ReturnType<typeof setInterval> | null = null;
 let watchdogInterval: ReturnType<typeof setInterval> | null = null;
@@ -164,6 +165,13 @@ export function startWatchdog(): void {
     log(`Initial self-ping: ${ok ? "OK" : "FAILED"}`, "watchdog");
 
     schedulerGuard();
+
+    setTimeout(() => {
+      log("Auto-starting greeting listener...", "watchdog");
+      startGreetingListener().catch(err => {
+        log(`Greeting listener auto-start failed: ${err.message}`, "watchdog");
+      });
+    }, 15000);
   }, 5000);
 }
 
@@ -190,6 +198,7 @@ export function getWatchdogStatus() {
     localPings: { success: pingCount, fail: failCount },
     externalPings: { success: externalPingCount, fail: externalFailCount },
     schedulerRestartCount,
+    greetingListener: getGreetingListenerStatus(),
     intervals: {
       selfPingMs: SELF_PING_INTERVAL,
       externalPingMs: EXTERNAL_PING_INTERVAL,
