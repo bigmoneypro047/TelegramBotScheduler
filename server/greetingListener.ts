@@ -26,6 +26,30 @@ function getPythonPath(): string {
   return "python3";
 }
 
+async function getDataWithRetry(maxAttempts = 10, delayMs = 5000) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const bots = await storage.getUserbots();
+      const groups = await storage.getGroups();
+      const activeBots = bots.filter(b => b.isActive && b.sessionString && b.apiId && b.apiHash);
+      const groupIds = groups.filter(g => g.groupId).map(g => g.groupId!);
+      if (activeBots.length >= 3 && groupIds.length > 0) {
+        return { activeBots, groupIds };
+      }
+      if (attempt < maxAttempts) {
+        log(`Greeting listener: DB returned ${activeBots.length} bots, ${groupIds.length} groups (attempt ${attempt}/${maxAttempts}), retrying in ${delayMs / 1000}s...`, "greeting");
+        await new Promise(r => setTimeout(r, delayMs));
+      }
+    } catch (err: any) {
+      if (attempt < maxAttempts) {
+        log(`Greeting listener: DB error on attempt ${attempt}/${maxAttempts}: ${err.message}, retrying...`, "greeting");
+        await new Promise(r => setTimeout(r, delayMs));
+      }
+    }
+  }
+  return null;
+}
+
 export async function startGreetingListener(): Promise<{ started: boolean; reason?: string }> {
   if (isRunning && listenerProcess) {
     log("Greeting listener already running", "greeting");
@@ -46,31 +70,22 @@ export async function startGreetingListener(): Promise<{ started: boolean; reaso
   }
 
   try {
-    const bots = await storage.getUserbots();
-    const groups = await storage.getGroups();
-
-    const activeBots = bots.filter(b => b.isActive && b.sessionString && b.apiId && b.apiHash);
-    if (activeBots.length < 3) {
-      const reason = `Need at least 3 active bots, found ${activeBots.length}`;
+    const data = await getDataWithRetry();
+    if (!data) {
+      const reason = "DB not ready or insufficient bots/groups after retries";
       log(`Greeting listener: ${reason}`, "greeting");
       isStarting = false;
       return { started: false, reason };
     }
 
-    const groupIds = groups.filter(g => g.groupId).map(g => g.groupId!);
-    if (groupIds.length === 0) {
-      const reason = "No groups configured";
-      log(`Greeting listener: ${reason}`, "greeting");
-      isStarting = false;
-      return { started: false, reason };
-    }
+    const { activeBots, groupIds } = data;
 
     if (isRunning && listenerProcess) {
       isStarting = false;
       return { started: false, reason: "already_running" };
     }
 
-    const data = {
+    const spawnData = {
       bots: activeBots.map(b => ({
         session: b.sessionString,
         apiId: b.apiId,
@@ -86,7 +101,7 @@ export async function startGreetingListener(): Promise<{ started: boolean; reaso
 
     listenerProcess = spawn(pythonBin, [
       "server/greeting_listener.py",
-      JSON.stringify(data),
+      JSON.stringify(spawnData),
     ], {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env },
@@ -192,7 +207,7 @@ export function stopGreetingListener(): void {
 
 export function getGreetingListenerStatus() {
   return {
-    isRunning,
+    isRunning: isRunning || isStarting,
     restartCount,
     lastStartTime: lastStartTime?.toISOString() || null,
   };

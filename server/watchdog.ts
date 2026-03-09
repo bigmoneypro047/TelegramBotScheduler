@@ -6,6 +6,7 @@ let selfPingInterval: ReturnType<typeof setInterval> | null = null;
 let watchdogInterval: ReturnType<typeof setInterval> | null = null;
 let externalPingInterval: ReturnType<typeof setInterval> | null = null;
 let schedulerGuardInterval: ReturnType<typeof setInterval> | null = null;
+let greetingGuardInterval: ReturnType<typeof setInterval> | null = null;
 let lastPingSuccess: Date | null = null;
 let lastExternalPingSuccess: Date | null = null;
 let pingCount = 0;
@@ -160,6 +161,16 @@ export function startWatchdog(): void {
     schedulerGuard();
   }, SCHEDULER_GUARD_INTERVAL);
 
+  greetingGuardInterval = setInterval(() => {
+    const glStatus = getGreetingListenerStatus();
+    if (!glStatus.isRunning) {
+      log("Greeting guard: listener is DOWN — auto-restarting...", "watchdog");
+      startGreetingListener().catch(err => {
+        log(`Greeting guard restart failed: ${err.message}`, "watchdog");
+      });
+    }
+  }, 60000);
+
   setTimeout(async () => {
     const ok = await selfPing();
     log(`Initial self-ping: ${ok ? "OK" : "FAILED"}`, "watchdog");
@@ -180,6 +191,7 @@ export function stopWatchdog(): void {
   if (externalPingInterval) { clearInterval(externalPingInterval); externalPingInterval = null; }
   if (watchdogInterval) { clearInterval(watchdogInterval); watchdogInterval = null; }
   if (schedulerGuardInterval) { clearInterval(schedulerGuardInterval); schedulerGuardInterval = null; }
+  if (greetingGuardInterval) { clearInterval(greetingGuardInterval); greetingGuardInterval = null; }
   log("Watchdog stopped", "watchdog");
 }
 
