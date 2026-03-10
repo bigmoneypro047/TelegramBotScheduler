@@ -10,8 +10,53 @@ import {
   users, botConfig, userbots, groups, messageLogs
 } from "@shared/schema";
 
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-const db = drizzle(pool);
+function createPool() {
+  const p = new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: 5,
+    min: 0,
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 5000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
+  });
+  p.on("error", (err) => {
+    console.error("[storage] Pool error (will recreate):", err.message);
+    schedulePoolRefresh();
+  });
+  return p;
+}
+
+let pool = createPool();
+let db = drizzle(pool);
+let refreshScheduled = false;
+
+function schedulePoolRefresh() {
+  if (refreshScheduled) return;
+  refreshScheduled = true;
+  setTimeout(() => {
+    try {
+      pool.end().catch(() => {});
+    } catch {}
+    pool = createPool();
+    db = drizzle(pool);
+    refreshScheduled = false;
+    console.log("[storage] Pool refreshed after error");
+  }, 1000);
+}
+
+async function withFreshConnection<T>(fn: (client: pg.Client) => Promise<T>): Promise<T> {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  try {
+    await client.connect();
+    const result = await fn(client);
+    await client.end();
+    return result;
+  } catch (err) {
+    try { await client.end(); } catch {}
+    throw err;
+  }
+}
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -33,6 +78,17 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  private async safeQuery<T>(poolQuery: () => Promise<T>, fallbackQuery: (client: pg.Client) => Promise<T>): Promise<T> {
+    try {
+      const result = await poolQuery();
+      return result;
+    } catch (poolErr: any) {
+      console.error("[storage] Pool query failed, trying direct connection:", poolErr.message);
+      schedulePoolRefresh();
+      return await withFreshConnection(fallbackQuery);
+    }
+  }
+
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
@@ -49,8 +105,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBotConfig(): Promise<BotConfig | undefined> {
-    const [config] = await db.select().from(botConfig).limit(1);
-    return config;
+    return this.safeQuery(
+      async () => {
+        const [config] = await db.select().from(botConfig).limit(1);
+        return config;
+      },
+      async (client) => {
+        const res = await client.query("SELECT * FROM bot_config LIMIT 1");
+        return res.rows[0] as BotConfig | undefined;
+      }
+    );
   }
 
   async upsertBotConfig(config: InsertBotConfig): Promise<BotConfig> {
@@ -64,7 +128,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserbots(): Promise<Userbot[]> {
-    return db.select().from(userbots).orderBy(userbots.order);
+    return this.safeQuery(
+      async () => {
+        const result = await db.select().from(userbots).orderBy(userbots.order);
+        return result;
+      },
+      async (client) => {
+        const res = await client.query("SELECT * FROM userbots ORDER BY bot_order");
+        return res.rows.map((r: any) => ({
+          id: r.id,
+          name: r.name,
+          phone: r.phone,
+          apiId: r.api_id,
+          apiHash: r.api_hash,
+          sessionString: r.session_string,
+          isActive: r.is_active,
+          order: r.bot_order,
+        })) as Userbot[];
+      }
+    );
   }
 
   async getUserbot(id: string): Promise<Userbot | undefined> {
@@ -87,7 +169,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getGroups(): Promise<Group[]> {
-    return db.select().from(groups).orderBy(groups.order);
+    return this.safeQuery(
+      async () => {
+        const result = await db.select().from(groups).orderBy(groups.order);
+        return result;
+      },
+      async (client) => {
+        const res = await client.query("SELECT * FROM groups ORDER BY group_order");
+        return res.rows.map((r: any) => ({
+          id: r.id,
+          name: r.name,
+          groupId: r.group_id,
+          order: r.group_order,
+        })) as Group[];
+      }
+    );
   }
 
   async getGroup(id: string): Promise<Group | undefined> {

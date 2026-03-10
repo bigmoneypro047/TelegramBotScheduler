@@ -46,18 +46,42 @@ function scheduleMessagesWithTimers(
   return scheduled;
 }
 
-async function getGroupsWithRetry(maxRetries = 3): Promise<Awaited<ReturnType<typeof storage.getGroups>>> {
+async function queryGroupsDirect(): Promise<Awaited<ReturnType<typeof storage.getGroups>>> {
+  const pgMod = await import("pg");
+  const client = new pgMod.default.Client({ connectionString: process.env.DATABASE_URL });
+  try {
+    await client.connect();
+    const res = await client.query("SELECT * FROM groups WHERE group_id IS NOT NULL ORDER BY group_order");
+    await client.end();
+    return res.rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      groupId: r.group_id,
+      order: r.group_order,
+    })) as any;
+  } catch (err) {
+    try { await client.end(); } catch {}
+    throw err;
+  }
+}
+
+async function getGroupsWithRetry(maxRetries = 5): Promise<Awaited<ReturnType<typeof storage.getGroups>>> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const result = await storage.getGroups();
+      const result = attempt <= 2
+        ? await storage.getGroups()
+        : await queryGroupsDirect();
       if (result.length === 0 && attempt < maxRetries) {
-        log(`getGroups returned 0 results on attempt ${attempt}, retrying in 3s...`, "scheduler");
+        log(`getGroups returned 0 results on attempt ${attempt}/${maxRetries}, retrying in 3s...`, "scheduler");
         await sleep(3000);
         continue;
       }
+      if (result.length > 0 && attempt > 1) {
+        log(`getGroups succeeded on attempt ${attempt} with ${result.length} groups`, "scheduler");
+      }
       return result;
     } catch (err: any) {
-      log(`getGroups attempt ${attempt} failed: ${err.message}`, "scheduler");
+      log(`getGroups attempt ${attempt}/${maxRetries} failed: ${err.message}`, "scheduler");
       if (attempt < maxRetries) await sleep(3000);
     }
   }
@@ -343,8 +367,42 @@ function generateDoneSchedule(groupIndex: number, dayOfYear: number, activeBotIn
   return schedule;
 }
 
+async function queryBotsDirect(): Promise<any[]> {
+  const pgMod = await import("pg");
+  const client = new pgMod.default.Client({ connectionString: process.env.DATABASE_URL });
+  try {
+    await client.connect();
+    const res = await client.query("SELECT * FROM userbots ORDER BY bot_order");
+    await client.end();
+    return res.rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      phone: r.phone,
+      apiId: r.api_id,
+      apiHash: r.api_hash,
+      sessionString: r.session_string,
+      isActive: r.is_active,
+      order: r.bot_order,
+    }));
+  } catch (err) {
+    try { await client.end(); } catch {}
+    throw err;
+  }
+}
+
 async function getActiveBotIndices(): Promise<number[]> {
-  const bots = await storage.getUserbots();
+  let bots;
+  try {
+    bots = await storage.getUserbots();
+    if (bots.length === 0) {
+      log("getActiveBotIndices: pool returned 0 bots, trying direct query...", "scheduler");
+      bots = await queryBotsDirect();
+    }
+  } catch (err: any) {
+    log(`getActiveBotIndices: pool failed (${err.message}), trying direct query...`, "scheduler");
+    bots = await queryBotsDirect();
+  }
+
   const indices: number[] = [];
   for (let i = 0; i < bots.length; i++) {
     if (bots[i].isActive && bots[i].sessionString && bots[i].apiId && bots[i].apiHash) {
@@ -352,8 +410,7 @@ async function getActiveBotIndices(): Promise<number[]> {
     }
   }
   if (indices.length > 0) return indices;
-  const bots2 = await storage.getUserbots();
-  return bots2.length > 0 ? bots2.map((_, i) => i) : [0, 1, 2, 3];
+  return bots.length > 0 ? bots.map((_: any, i: number) => i) : [0, 1, 2, 3];
 }
 
 export async function getFullScheduleForToday(): Promise<any> {
@@ -515,11 +572,37 @@ async function sendUserbotMessage(sessionString: string, apiId: string, apiHash:
 }
 
 async function executeScheduledMessage(botName: string, groupName: string, message: string, period: string) {
-  const config = await storage.getBotConfig();
-  const bots = await storage.getUserbots();
-  const groupsList = await storage.getGroups();
+  let config, bots, groupsList;
+  try {
+    [config, bots, groupsList] = await Promise.all([
+      storage.getBotConfig(),
+      storage.getUserbots(),
+      storage.getGroups(),
+    ]);
+    if (bots.length === 0 || groupsList.length === 0) {
+      log(`executeScheduledMessage: pool returned ${bots.length} bots, ${groupsList.length} groups — using direct DB`, "scheduler");
+      [bots, groupsList] = await Promise.all([queryBotsDirect(), queryGroupsDirect()]);
+      if (!config) {
+        const pgMod = await import("pg");
+        const client = new pgMod.default.Client({ connectionString: process.env.DATABASE_URL });
+        await client.connect();
+        const res = await client.query("SELECT * FROM bot_config LIMIT 1");
+        await client.end();
+        config = res.rows[0] as any;
+      }
+    }
+  } catch (err: any) {
+    log(`executeScheduledMessage: pool failed (${err.message}) — using direct DB`, "scheduler");
+    [bots, groupsList] = await Promise.all([queryBotsDirect(), queryGroupsDirect()]);
+    const pgMod = await import("pg");
+    const client = new pgMod.default.Client({ connectionString: process.env.DATABASE_URL });
+    await client.connect();
+    const res = await client.query("SELECT * FROM bot_config LIMIT 1");
+    await client.end();
+    config = res.rows[0] as any;
+  }
 
-  const group = groupsList.find(g => g.name === groupName);
+  const group = groupsList.find((g: any) => g.name === groupName);
   if (!group || !group.groupId) {
     log(`Group ${groupName} not found or has no group ID`, "scheduler");
     await storage.createMessageLog({
@@ -533,12 +616,13 @@ async function executeScheduledMessage(botName: string, groupName: string, messa
   }
 
   if (botName === "Main Bot") {
-    if (!config?.botToken) {
+    const token = config?.botToken || (config as any)?.bot_token;
+    if (!token) {
       log("No bot token configured", "scheduler");
       await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: "skipped_no_token" });
       return;
     }
-    const success = await sendTelegramBotMessage(config.botToken, group.groupId, message);
+    const success = await sendTelegramBotMessage(token, group.groupId, message);
     await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: success ? "sent" : "failed" });
   } else {
     const botIndex = parseInt(botName.replace("Userbot ", "")) - 1;
