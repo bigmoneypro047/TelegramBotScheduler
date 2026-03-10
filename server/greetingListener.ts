@@ -1,7 +1,6 @@
 import path from "path";
 import fs from "fs";
 import { spawn, type ChildProcess } from "child_process";
-import { storage } from "./storage";
 import { log } from "./index";
 
 let listenerProcess: ChildProcess | null = null;
@@ -26,18 +25,48 @@ function getPythonPath(): string {
   return "python3";
 }
 
+async function queryDbDirect(): Promise<{ activeBots: any[]; groupIds: string[] } | null> {
+  const pg = await import("pg");
+  const client = new pg.default.Client({ connectionString: process.env.DATABASE_URL });
+  try {
+    await client.connect();
+    const botsResult = await client.query(
+      `SELECT * FROM userbots WHERE is_active = true AND session_string IS NOT NULL AND api_id IS NOT NULL AND api_hash IS NOT NULL ORDER BY bot_order`
+    );
+    const groupsResult = await client.query(
+      `SELECT * FROM groups WHERE group_id IS NOT NULL ORDER BY group_order`
+    );
+    await client.end();
+
+    const activeBots = botsResult.rows.map((r: any) => ({
+      sessionString: r.session_string,
+      apiId: r.api_id,
+      apiHash: r.api_hash,
+      name: r.name,
+      isActive: r.is_active,
+    }));
+    const groupIds = groupsResult.rows.map((r: any) => r.group_id);
+
+    log(`Greeting listener direct DB query: ${activeBots.length} active bots, ${groupIds.length} groups`, "greeting");
+    return { activeBots, groupIds };
+  } catch (err: any) {
+    log(`Greeting listener direct DB query failed: ${err.message}`, "greeting");
+    try { await client.end(); } catch {}
+    return null;
+  }
+}
+
 async function getDataWithRetry(maxAttempts = 10, delayMs = 5000) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const bots = await storage.getUserbots();
-      const groups = await storage.getGroups();
-      const activeBots = bots.filter(b => b.isActive && b.sessionString && b.apiId && b.apiHash);
-      const groupIds = groups.filter(g => g.groupId).map(g => g.groupId!);
-      if (activeBots.length >= 3 && groupIds.length > 0) {
-        return { activeBots, groupIds };
+      const result = await queryDbDirect();
+      if (result && result.activeBots.length >= 3 && result.groupIds.length > 0) {
+        return result;
       }
+      const botCount = result?.activeBots.length ?? 0;
+      const groupCount = result?.groupIds.length ?? 0;
       if (attempt < maxAttempts) {
-        log(`Greeting listener: DB returned ${activeBots.length} bots, ${groupIds.length} groups (attempt ${attempt}/${maxAttempts}), retrying in ${delayMs / 1000}s...`, "greeting");
+        log(`Greeting listener: got ${botCount} bots, ${groupCount} groups (attempt ${attempt}/${maxAttempts}), retrying in ${delayMs / 1000}s...`, "greeting");
         await new Promise(r => setTimeout(r, delayMs));
       }
     } catch (err: any) {
@@ -86,7 +115,7 @@ export async function startGreetingListener(): Promise<{ started: boolean; reaso
     }
 
     const spawnData = {
-      bots: activeBots.map(b => ({
+      bots: activeBots.map((b: any) => ({
         session: b.sessionString,
         apiId: b.apiId,
         apiHash: b.apiHash,
@@ -120,13 +149,15 @@ export async function startGreetingListener(): Promise<{ started: boolean; reaso
             log(`GREETING: ${msg.msg}`, "greeting");
           } else if (msg.type === "greeting_sent") {
             log(`REPLY: ${msg.msg}`, "greeting");
-            storage.createMessageLog({
-              botName: `Userbot ${msg.botIndex + 1}`,
-              groupName: msg.chatId || "unknown",
-              message: msg.response,
-              schedulePeriod: "greeting_response",
-              status: "sent",
-            }).catch(() => {});
+            import("./storage").then(({ storage: st }) => {
+              st.createMessageLog({
+                botName: `Userbot ${msg.botIndex + 1}`,
+                groupName: msg.chatId || "unknown",
+                message: msg.response,
+                schedulePeriod: "greeting_response",
+                status: "sent",
+              }).catch(() => {});
+            });
           } else if (msg.type === "started") {
             log(`Greeting listener ACTIVE: ${msg.msg}`, "greeting");
           } else if (msg.type === "error") {
