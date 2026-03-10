@@ -68,6 +68,9 @@ A web dashboard for managing automated Telegram messaging across 5 groups using 
 - **Crash protection**: `safeExecuteScheduledMessage` wraps all sends with try/catch
 - **Heartbeat**: Cron runs every minute to confirm scheduler is alive
 - **Endpoints**: `/api/health` (full status), `/api/watchdog` (watchdog stats)
+- **DB Pool Resilience**: Storage layer uses keepAlive, short idle timeouts, error-triggered pool refresh, and automatic fallback to fresh direct `pg.Client` connections when pool queries fail or return empty results
+- **Direct DB Fallback**: Scheduler's `getGroupsWithRetry`, `getActiveBotIndices`, and `executeScheduledMessage` all fallback to direct SQL queries (bypassing Drizzle pool) if the shared pool returns empty/errors
+- **Greeting Listener Direct DB**: Uses fresh `pg.Client` per startup attempt to avoid stale pool issues
 
 ## Technical Notes
 - Scheduler dynamically fetches active bot indices, skipping inactive/frozen userbots

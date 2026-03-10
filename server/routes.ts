@@ -392,5 +392,38 @@ export async function registerRoutes(
     res.json({ success: true, status: getGreetingListenerStatus() });
   });
 
+  app.get("/api/db-diagnostic", async (_req, res) => {
+    const pg = await import("pg");
+    const client = new pg.default.Client({ connectionString: process.env.DATABASE_URL });
+    try {
+      await client.connect();
+      const botsAll = await client.query("SELECT COUNT(*) as total FROM userbots");
+      const botsActive = await client.query("SELECT COUNT(*) as total FROM userbots WHERE is_active = true");
+      const botsWithSession = await client.query("SELECT COUNT(*) as total FROM userbots WHERE session_string IS NOT NULL");
+      const groupsAll = await client.query("SELECT COUNT(*) as total FROM groups");
+      const groupsWithId = await client.query("SELECT COUNT(*) as total FROM groups WHERE group_id IS NOT NULL");
+      const tables = await client.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'");
+      const dbUrl = process.env.DATABASE_URL || "NOT SET";
+      const maskedUrl = dbUrl.replace(/:[^@]+@/, ':***@');
+      await client.end();
+      res.json({
+        dbUrl: maskedUrl,
+        tables: tables.rows.map((r: any) => r.table_name),
+        userbots: {
+          total: parseInt(botsAll.rows[0].total),
+          active: parseInt(botsActive.rows[0].total),
+          withSession: parseInt(botsWithSession.rows[0].total),
+        },
+        groups: {
+          total: parseInt(groupsAll.rows[0].total),
+          withGroupId: parseInt(groupsWithId.rows[0].total),
+        },
+      });
+    } catch (err: any) {
+      try { await client.end(); } catch {}
+      res.status(500).json({ error: err.message, stack: err.stack });
+    }
+  });
+
   return httpServer;
 }
