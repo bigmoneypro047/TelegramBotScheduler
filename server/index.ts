@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startWatchdog } from "./watchdog";
+import { seedDatabaseIfEmpty } from "./seed";
 
 process.on("uncaughtException", (err) => {
   console.error(`UNCAUGHT EXCEPTION: ${err.message}`);
@@ -107,8 +108,9 @@ app.use((req, res, next) => {
       host: "0.0.0.0",
       reusePort: true,
     },
-    () => {
+    async () => {
       log(`serving on port ${port}`);
+      await seedDatabaseIfEmpty();
       startWatchdog();
     },
   );
