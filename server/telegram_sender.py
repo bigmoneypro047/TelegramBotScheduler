@@ -44,15 +44,22 @@ async def send_message(session_string, api_id, api_hash, chat_id, message):
 
 async def login_request_code(api_id, api_hash, phone):
     client = TelegramClient(StringSession(), int(api_id), api_hash)
-    await client.connect()
-    result = await client.send_code_request(phone)
-    session = client.session.save()
-    await client.disconnect()
-    print(json.dumps({
-        "success": True,
-        "session": session,
-        "phoneCodeHash": result.phone_code_hash,
-    }))
+    try:
+        await client.connect()
+        result = await client.send_code_request(phone)
+        session = client.session.save()
+        await client.disconnect()
+        print(json.dumps({
+            "success": True,
+            "session": session,
+            "phoneCodeHash": result.phone_code_hash,
+        }))
+    except Exception as e:
+        try:
+            await client.disconnect()
+        except:
+            pass
+        print(json.dumps({"success": False, "error": str(e)}))
 
 async def login_verify_code(session_string, api_id, api_hash, phone, code, phone_code_hash, password=None):
     client = TelegramClient(StringSession(session_string), int(api_id), api_hash)

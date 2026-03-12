@@ -144,8 +144,22 @@ export async function registerRoutes(
     const { promisify } = await import("util");
     const execFileAsync = promisify(execFile);
     const pythonBin = getPythonPath();
-    const { stdout } = await execFileAsync(pythonBin, ["server/telegram_sender.py", ...args], { timeout: 30000 });
-    return JSON.parse(stdout.trim());
+    try {
+      const { stdout } = await execFileAsync(pythonBin, ["server/telegram_sender.py", ...args], { timeout: 30000 });
+      return JSON.parse(stdout.trim());
+    } catch (err: any) {
+      const stderr = err.stderr || err.message || "Unknown Python error";
+      if (stderr.includes("AuthKeyDuplicatedError")) {
+        return { success: false, error: "Session is permanently broken (AuthKeyDuplicatedError). A fresh login is needed — the old session was invalidated." };
+      }
+      if (stderr.includes("FloodWaitError")) {
+        const match = stderr.match(/Must wait (\d+) seconds/i) || stderr.match(/A wait of (\d+) seconds/i);
+        const secs = match ? match[1] : "unknown";
+        return { success: false, error: `Telegram rate limit — please wait ${secs} seconds before trying again.` };
+      }
+      const lastLine = stderr.split("\n").filter((l: string) => l.trim()).pop() || "Unknown error";
+      return { success: false, error: lastLine };
+    }
   }
 
   app.post("/api/userbots/:id/request-code", async (req, res) => {
