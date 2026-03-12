@@ -161,15 +161,21 @@ export function startWatchdog(): void {
     schedulerGuard();
   }, SCHEDULER_GUARD_INTERVAL);
 
-  greetingGuardInterval = setInterval(() => {
-    const glStatus = getGreetingListenerStatus();
-    if (!glStatus.isRunning) {
-      log("Greeting guard: listener is DOWN — auto-restarting...", "watchdog");
-      startGreetingListener().catch(err => {
-        log(`Greeting guard restart failed: ${err.message}`, "watchdog");
-      });
-    }
-  }, 60000);
+  const isDev = process.env.NODE_ENV === "development";
+
+  if (!isDev) {
+    greetingGuardInterval = setInterval(() => {
+      const glStatus = getGreetingListenerStatus();
+      if (!glStatus.isRunning) {
+        log("Greeting guard: listener is DOWN — auto-restarting...", "watchdog");
+        startGreetingListener().catch(err => {
+          log(`Greeting guard restart failed: ${err.message}`, "watchdog");
+        });
+      }
+    }, 60000);
+  } else {
+    log("DEV MODE: Greeting listener guard disabled to avoid session conflicts with production", "watchdog");
+  }
 
   setTimeout(async () => {
     const ok = await selfPing();
@@ -177,12 +183,14 @@ export function startWatchdog(): void {
 
     schedulerGuard();
 
-    setTimeout(() => {
-      log("Auto-starting greeting listener...", "watchdog");
-      startGreetingListener().catch(err => {
-        log(`Greeting listener auto-start failed: ${err.message}`, "watchdog");
-      });
-    }, 15000);
+    if (!isDev) {
+      setTimeout(() => {
+        log("Auto-starting greeting listener...", "watchdog");
+        startGreetingListener().catch(err => {
+          log(`Greeting listener auto-start failed: ${err.message}`, "watchdog");
+        });
+      }, 15000);
+    }
   }, 5000);
 }
 

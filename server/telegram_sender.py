@@ -88,10 +88,34 @@ async def login_verify_code(session_string, api_id, api_hash, phone, code, phone
     await client.disconnect()
     print(json.dumps({"success": True, "session": new_session}))
 
+async def check_session(session_string, api_id, api_hash):
+    client = TelegramClient(StringSession(session_string), int(api_id), api_hash)
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            print(json.dumps({"success": False, "error": "Session not authorized"}))
+            await client.disconnect()
+            return
+        me = await client.get_me()
+        await client.disconnect()
+        print(json.dumps({"success": True, "userName": me.first_name or str(me.id)}))
+    except Exception as e:
+        try:
+            await client.disconnect()
+        except:
+            pass
+        print(json.dumps({"success": False, "error": str(e)}))
+
 if __name__ == "__main__":
     action = sys.argv[1]
     
-    if action == "send":
+    if action == "check_session":
+        session_string = sys.argv[2]
+        api_id = sys.argv[3]
+        api_hash = sys.argv[4]
+        asyncio.run(check_session(session_string, api_id, api_hash))
+
+    elif action == "send":
         session_string = sys.argv[2]
         api_id = sys.argv[3]
         api_hash = sys.argv[4]

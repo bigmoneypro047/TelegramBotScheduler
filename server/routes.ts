@@ -229,6 +229,33 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/userbots/session-health", async (req, res) => {
+    try {
+      const bots = await storage.getUserbots();
+      const results = [];
+      for (const bot of bots) {
+        if (!bot.sessionString || !bot.apiId || !bot.apiHash) {
+          results.push({ id: bot.id, name: bot.name, status: "no_session", error: "Missing session or API credentials" });
+          continue;
+        }
+        try {
+          const result = await runPython(["check_session", bot.sessionString, bot.apiId, bot.apiHash]);
+          results.push({ id: bot.id, name: bot.name, status: result.success ? "healthy" : "broken", error: result.error || null, userName: result.userName || null });
+        } catch (err: any) {
+          const errMsg = err.message || "";
+          if (errMsg.includes("AuthKeyDuplicated") || errMsg.includes("authorization key")) {
+            results.push({ id: bot.id, name: bot.name, status: "broken", error: "Session invalidated - needs re-authentication" });
+          } else {
+            results.push({ id: bot.id, name: bot.name, status: "error", error: errMsg.substring(0, 200) });
+          }
+        }
+      }
+      res.json({ results });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/groups/bulk-setup", async (req, res) => {
     const { groups: groupEntries } = req.body;
     if (!Array.isArray(groupEntries) || groupEntries.length === 0) {

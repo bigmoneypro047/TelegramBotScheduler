@@ -543,6 +543,10 @@ async function sendTelegramBotMessage(token: string, chatId: string, message: st
 }
 
 async function sendUserbotMessage(sessionString: string, apiId: string, apiHash: string, chatId: string, message: string): Promise<boolean> {
+  if (process.env.NODE_ENV === "development") {
+    log("DEV MODE: Skipping userbot message to avoid session conflicts with production", "telegram");
+    return true;
+  }
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const { execFile } = await import("child_process");

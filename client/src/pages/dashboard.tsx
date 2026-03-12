@@ -16,6 +16,9 @@ import {
   Zap,
   Radio,
   HandMetal,
+  AlertTriangle,
+  RefreshCw,
+  ShieldAlert,
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -72,6 +75,17 @@ export default function Dashboard() {
       toast({ title: "Defaults created", description: "4 userbots and 6 groups have been set up." });
     },
   });
+
+  const { data: sessionHealth, isLoading: sessionHealthLoading } = useQuery<{
+    results: Array<{ id: string; name: string; status: string; error: string | null; userName: string | null }>;
+  }>({
+    queryKey: ["/api/userbots/session-health"],
+    refetchInterval: 60000,
+    staleTime: 30000,
+  });
+
+  const brokenSessions = sessionHealth?.results?.filter(r => r.status === "broken") || [];
+  const healthySessions = sessionHealth?.results?.filter(r => r.status === "healthy") || [];
 
   const { data: greetingStatus } = useQuery<{
     isRunning: boolean;
@@ -136,6 +150,41 @@ export default function Dashboard() {
           </Badge>
         </div>
       </div>
+
+      {brokenSessions.length > 0 && (
+        <Card className="border-destructive bg-destructive/5" data-testid="card-session-alert">
+          <CardContent className="pt-4 pb-3">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-destructive">
+                  {brokenSessions.length} Bot Session{brokenSessions.length > 1 ? "s" : ""} Broken
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  The following bots have invalidated sessions and need to be re-authenticated
+                  from the Configuration page: {brokenSessions.map(b => b.name).join(", ")}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Go to Configuration, click each bot, and re-enter the phone number to get a new verification code.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {sessionHealth && brokenSessions.length === 0 && healthySessions.length > 0 && (
+        <Card className="border-green-500/30 bg-green-500/5" data-testid="card-session-healthy">
+          <CardContent className="pt-4 pb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <p className="text-xs text-green-700 dark:text-green-400">
+                All {healthySessions.length} bot sessions are healthy
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card data-testid="card-scheduler-status">
