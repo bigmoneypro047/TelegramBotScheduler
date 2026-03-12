@@ -1,7 +1,10 @@
 import path from "path";
 import fs from "fs";
-import { spawn, type ChildProcess } from "child_process";
+import { spawn, type ChildProcess, execFile } from "child_process";
+import { promisify } from "util";
 import { log } from "./index";
+
+const execFileAsync = promisify(execFile);
 
 let listenerProcess: ChildProcess | null = null;
 let isRunning = false;
@@ -10,6 +13,7 @@ let lastStartTime: Date | null = null;
 let intentionalStop = false;
 let isStarting = false;
 let restartTimer: ReturnType<typeof setTimeout> | null = null;
+let cachedExtraBots: Array<{ sessionString: string; apiId: string; apiHash: string; name: string }> = [];
 
 function getPythonPath(): string {
   const candidates = [
@@ -79,6 +83,52 @@ async function getDataWithRetry(maxAttempts = 10, delayMs = 5000) {
   return null;
 }
 
+async function sendUserbotGreeting(bot: { sessionString: string; apiId: string; apiHash: string; name: string }, chatId: string, message: string, botIndex: number): Promise<boolean> {
+  try {
+    const pythonBin = getPythonPath();
+    const { stdout } = await execFileAsync(pythonBin, [
+      "server/telegram_sender.py", "send",
+      bot.sessionString, bot.apiId, bot.apiHash, chatId, message
+    ], { timeout: 60000 });
+    const result = JSON.parse(stdout.trim());
+    if (result.success) {
+      log(`GREETING REPLY: Bot ${botIndex + 1} (${bot.name}) replied '${message.substring(0, 50)}' in ${chatId}`, "greeting");
+      return true;
+    }
+    log(`Greeting send failed for Bot ${botIndex + 1}: ${result.error}`, "greeting");
+    return false;
+  } catch (err: any) {
+    log(`Greeting send error for Bot ${botIndex + 1}: ${err.message}`, "greeting");
+    return false;
+  }
+}
+
+async function dispatchExtraResponses(chatId: string, responses: string[]) {
+  if (cachedExtraBots.length === 0) return;
+
+  const available = cachedExtraBots.map((b, i) => ({ bot: b, index: i + 1 }));
+  const shuffled = available.sort(() => Math.random() - 0.5);
+  const selected = shuffled.slice(0, Math.min(responses.length, shuffled.length));
+
+  for (let i = 0; i < selected.length; i++) {
+    const delay = (15 + Math.floor(Math.random() * 30)) * 1000;
+    setTimeout(async () => {
+      const { bot, index } = selected[i];
+      const success = await sendUserbotGreeting(bot, chatId, responses[i], index);
+      try {
+        const { storage } = await import("./storage");
+        await storage.createMessageLog({
+          botName: `Userbot ${index + 1}`,
+          groupName: chatId,
+          message: responses[i],
+          schedulePeriod: "greeting_response",
+          status: success ? "sent" : "failed",
+        });
+      } catch {}
+    }, delay);
+  }
+}
+
 export async function startGreetingListener(): Promise<{ started: boolean; reason?: string }> {
   if (isRunning && listenerProcess) {
     log("Greeting listener already running", "greeting");
@@ -113,6 +163,8 @@ export async function startGreetingListener(): Promise<{ started: boolean; reaso
       isStarting = false;
       return { started: false, reason: "already_running" };
     }
+
+    cachedExtraBots = activeBots.slice(1);
 
     const spawnData = {
       bots: activeBots.map((b: any) => ({
@@ -158,6 +210,15 @@ export async function startGreetingListener(): Promise<{ started: boolean; reaso
                 status: "sent",
               }).catch(() => {});
             });
+          } else if (msg.type === "dispatch_extra_responses") {
+            const chatId = msg.chatId;
+            const responses = msg.responses as string[];
+            if (chatId && responses && responses.length > 0) {
+              log(`Dispatching ${responses.length} extra greeting responses to Bots 2-6 for ${chatId}`, "greeting");
+              dispatchExtraResponses(chatId, responses).catch(err => {
+                log(`Extra response dispatch error: ${err.message}`, "greeting");
+              });
+            }
           } else if (msg.type === "started") {
             log(`Greeting listener ACTIVE: ${msg.msg}`, "greeting");
           } else if (msg.type === "error") {
