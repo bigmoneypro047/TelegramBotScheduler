@@ -183,7 +183,7 @@ export default function Configuration() {
 
 function UserbotLoginRow({ bot }: { bot: any }) {
   const { toast } = useToast();
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(bot.phoneNumber || "");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [step, setStep] = useState<"idle" | "entering_phone" | "code_sent" | "needs_password">("idle");
@@ -272,15 +272,15 @@ function UserbotLoginRow({ bot }: { bot: any }) {
             )}
           </div>
         </div>
-        {!hasSession && hasApiCreds && step === "idle" && (
+        {hasApiCreds && step === "idle" && (
           <Button
             size="sm"
-            variant="secondary"
+            variant={hasSession ? "outline" : "secondary"}
             onClick={() => setStep("entering_phone")}
             data-testid={`button-login-${bot.order}`}
           >
             <LogIn className="w-3 h-3 mr-1" />
-            Login
+            {hasSession ? "Re-authenticate" : "Login"}
           </Button>
         )}
       </div>

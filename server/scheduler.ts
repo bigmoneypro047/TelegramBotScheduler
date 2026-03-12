@@ -564,7 +564,12 @@ async function sendUserbotMessage(sessionString: string, apiId: string, apiHash:
       }
       log(`Userbot send attempt ${attempt + 1} failed: ${result.error}`, "telegram");
     } catch (err: any) {
-      log(`Userbot message attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ${err.message}`, "telegram");
+      const errMsg = err.message || "";
+      if (errMsg.includes("AuthKeyDuplicatedError") || errMsg.includes("auth key")) {
+        log(`SESSION BROKEN (AuthKeyDuplicatedError) — this bot needs re-authentication. Skipping retries.`, "telegram");
+        return false;
+      }
+      log(`Userbot message attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ${errMsg}`, "telegram");
     }
     if (attempt < MAX_RETRIES) {
       const delay = RETRY_DELAYS[attempt] || 30000;
