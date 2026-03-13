@@ -62,6 +62,7 @@ async function queryGroupsDirect(): Promise<Awaited<ReturnType<typeof storage.ge
       name: r.name,
       groupId: r.group_id,
       order: r.group_order,
+      languageOverride: r.language_override || null,
     })) as any;
   } catch (err) {
     try { await client.end(); } catch {}
@@ -258,8 +259,10 @@ function generateReadySchedule(windowIndex: number, groupIndex: number, dayOfYea
   return schedule;
 }
 
-function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCount: number = 5, activeBotIndices: number[] = [0, 1, 2, 3]): { botIndex: number; message: string; minuteOffset: number }[] {
-  const lang = getConversationLanguageForDay(dayOfYear);
+function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCount: number = 5, activeBotIndices: number[] = [0, 1, 2, 3], languageOverride?: string | null): { botIndex: number; message: string; minuteOffset: number }[] {
+  const baseLang = languageOverride || getConversationLanguageForDay(dayOfYear);
+  const useEnglishMix = languageOverride && dayOfYear % 5 === 0;
+  const lang = useEnglishMix ? "English" : baseLang;
   const eveningTopics = EVENING_CHAT_BY_LANG[lang] || EVENING_CHAT_BY_LANG["English"];
   const dayOfWeek = getNigeriaDate().getDay();
   const topicSets = eveningTopics[dayOfWeek] || eveningTopics[0];
@@ -310,8 +313,10 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
   return schedule;
 }
 
-function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3]): { botIndex: number; message: string; minuteOffset: number }[] {
-  const lang = getConversationLanguageForDay(dayOfYear);
+function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3], languageOverride?: string | null): { botIndex: number; message: string; minuteOffset: number }[] {
+  const baseLang = languageOverride || getConversationLanguageForDay(dayOfYear);
+  const useEnglishMix = languageOverride && dayOfYear % 5 === 0;
+  const lang = useEnglishMix ? "English" : baseLang;
   const threads = MORNING_THREADS_BY_LANG[lang] || MORNING_THREADS_BY_LANG["English"];
   const seed = dayOfYear * 50 + groupIndex * 7;
 
@@ -442,7 +447,8 @@ export async function getFullScheduleForToday(): Promise<any> {
   };
 
   for (let g = 0; g < numGroups; g++) {
-    const morningItems = generateMorningChatSchedule(g, dayOfYear, activeBots);
+    const langOverride = (groupsList[g] as any)?.languageOverride || null;
+    const morningItems = generateMorningChatSchedule(g, dayOfYear, activeBots, langOverride);
     schedule.morningChat.push({
       groupIndex: g,
       messages: morningItems.map(item => {
@@ -499,7 +505,8 @@ export async function getFullScheduleForToday(): Promise<any> {
   }
 
   for (let g = 0; g < numGroups; g++) {
-    const eveningItems = generateEveningMessages(g, dayOfYear, numGroups, activeBots);
+    const langOverride = (groupsList[g] as any)?.languageOverride || null;
+    const eveningItems = generateEveningMessages(g, dayOfYear, numGroups, activeBots, langOverride);
     schedule.eveningChat.push({
       groupIndex: g,
       messages: eveningItems.map(item => {
@@ -763,7 +770,8 @@ async function recoverInProgressSessions(): Promise<void> {
 
     const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
     for (let g = 0; g < groupsList.length; g++) {
-      const items = generateMorningChatSchedule(g, dayOfYear, activeBots);
+      const langOverride = (groupsList[g] as any).languageOverride || null;
+      const items = generateMorningChatSchedule(g, dayOfYear, activeBots, langOverride);
       const remaining = items.filter(item => item.minuteOffset > elapsedMinutes);
       for (const item of remaining) {
         allItems.push({
@@ -791,7 +799,8 @@ async function recoverInProgressSessions(): Promise<void> {
 
     const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
     for (let g = 0; g < groupsList.length; g++) {
-      const items = generateEveningMessages(g, dayOfYear, groupsList.length, activeBots);
+      const langOverride = (groupsList[g] as any).languageOverride || null;
+      const items = generateEveningMessages(g, dayOfYear, groupsList.length, activeBots, langOverride);
       const remaining = items.filter(item => item.minuteOffset > elapsedMinutes);
       for (const item of remaining) {
         allItems.push({
@@ -860,7 +869,8 @@ export function startScheduler() {
 
       const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
       for (let g = 0; g < groupsList.length; g++) {
-        const items = generateMorningChatSchedule(g, dayOfYear, activeBots);
+        const langOverride = (groupsList[g] as any).languageOverride || null;
+        const items = generateMorningChatSchedule(g, dayOfYear, activeBots, langOverride);
         for (const item of items) {
           allItems.push({
             botName: `Userbot ${item.botIndex + 1}`,
@@ -956,7 +966,8 @@ export function startScheduler() {
 
       const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
       for (let g = 0; g < groupsList.length; g++) {
-        const items = generateEveningMessages(g, dayOfYear, groupsList.length, activeBots);
+        const langOverride = (groupsList[g] as any).languageOverride || null;
+        const items = generateEveningMessages(g, dayOfYear, groupsList.length, activeBots, langOverride);
         for (const item of items) {
           allItems.push({
             botName: `Userbot ${item.botIndex + 1}`,
@@ -1012,7 +1023,8 @@ export async function triggerEveningChatNow(): Promise<string> {
 
     const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
     for (let g = 0; g < groupsList.length; g++) {
-      const items = generateEveningMessages(g, dayOfYear, groupsList.length, activeBots);
+      const langOverride = (groupsList[g] as any).languageOverride || null;
+      const items = generateEveningMessages(g, dayOfYear, groupsList.length, activeBots, langOverride);
       const remaining = items.filter(item => item.minuteOffset >= currentMinutesFromStart);
       if (remaining.length === 0) continue;
       const firstOffset = remaining[0].minuteOffset;
@@ -1047,7 +1059,8 @@ export async function triggerMorningTestNow(): Promise<string> {
     if (groupsList.length === 0) return "No groups configured";
 
     const group = groupsList[0];
-    const items = generateMorningChatSchedule(0, dayOfYear, activeBots);
+    const langOverride = (group as any).languageOverride || null;
+    const items = generateMorningChatSchedule(0, dayOfYear, activeBots, langOverride);
     const allItems = items.map(item => ({
       botName: `Userbot ${item.botIndex + 1}`,
       groupName: group.name,
@@ -1075,7 +1088,8 @@ export async function triggerMorningSpeedTest(): Promise<string> {
     if (groupsList.length === 0) return "No groups configured";
 
     const group = groupsList[0];
-    const items = generateMorningChatSchedule(0, dayOfYear, activeBots);
+    const langOverride = (group as any).languageOverride || null;
+    const items = generateMorningChatSchedule(0, dayOfYear, activeBots, langOverride);
     const totalMessages = items.length;
     const totalDurationMs = 60 * 60 * 1000;
     const intervalMs = Math.floor(totalDurationMs / (totalMessages - 1 || 1));

@@ -35,6 +35,7 @@ export const groups = pgTable("groups", {
   groupId: text("group_id"),
   order: integer("group_order").notNull(),
   isActive: boolean("is_active").default(true),
+  languageOverride: text("language_override"),
 });
 
 export const messageLogs = pgTable("message_logs", {
