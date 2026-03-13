@@ -167,9 +167,6 @@ export function startWatchdog(): void {
     greetingGuardInterval = setInterval(() => {
       const glStatus = getGreetingListenerStatus();
       if (!glStatus.isRunning) {
-        if (glStatus.restartCount > 15) {
-          return;
-        }
         log("Greeting guard: listener is DOWN — auto-restarting...", "watchdog");
         startGreetingListener().catch(err => {
           log(`Greeting guard restart failed: ${err.message}`, "watchdog");
