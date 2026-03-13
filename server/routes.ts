@@ -1,9 +1,13 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { storage } from "./storage";
 import { startScheduler, stopScheduler, getSchedulerStatus, getFullScheduleForToday, triggerReadyWindowNow, triggerEveningChatNow, triggerMorningTestNow, triggerMorningSpeedTest } from "./scheduler";
 import { getWatchdogStatus } from "./watchdog";
 import { startGreetingListener, stopGreetingListener, getGreetingListenerStatus, resetGreetingListenerRestarts } from "./greetingListener";
+
+const execFileAsync = promisify(execFile);
 
 export async function registerRoutes(
   httpServer: Server,
@@ -126,9 +130,6 @@ export async function registerRoutes(
   const loginSessions: Map<string, any> = new Map();
 
   async function runPython(args: string[]): Promise<any> {
-    const childProcess = await import("child_process");
-    const util = await import("util");
-    const execFileAsync = util.promisify(childProcess.execFile);
     const pythonBin = `${process.cwd()}/.pythonlibs/bin/python3`;
     try {
       const { stdout } = await execFileAsync(pythonBin, ["server/telegram_sender.py", ...args], { timeout: 30000 });
