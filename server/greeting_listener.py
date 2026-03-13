@@ -6,6 +6,7 @@ import time
 import re
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
+from telethon.tl.types import PeerChannel
 
 LANG_GREETING_PATTERNS = {
     "english": {
@@ -307,22 +308,21 @@ async def main():
     bot_label = f"Bot {connected_bot_index + 1}"
 
     group_entities = {}
-    try:
-        dialogs = await listener_client.get_dialogs()
-        for dialog in dialogs:
-            if dialog.entity and hasattr(dialog.entity, 'id'):
-                eid = dialog.entity.id
-                if hasattr(dialog.entity, 'megagroup') or hasattr(dialog.entity, 'broadcast'):
-                    full_id = str(-1000000000000 - eid)
-                else:
-                    full_id = str(-eid)
-                if full_id in group_ids:
-                    group_entities[full_id] = dialog.entity
-    except Exception as e:
-        print(json.dumps({"type": "error", "msg": f"Failed to load dialogs: {str(e)}"}), flush=True)
+    for gid_str in group_ids:
+        try:
+            target_id = int(gid_str)
+            if target_id < -1000000000000:
+                channel_id = abs(target_id) - 1000000000000
+                entity = await listener_client.get_entity(PeerChannel(channel_id))
+            else:
+                entity = await listener_client.get_entity(target_id)
+            group_entities[gid_str] = entity
+            print(json.dumps({"type": "log", "msg": f"Resolved group {gid_str} -> {getattr(entity, 'title', 'unknown')}"}), flush=True)
+        except Exception as e:
+            print(json.dumps({"type": "error", "msg": f"Failed to resolve group {gid_str}: {str(e)}"}), flush=True)
 
     if len(group_entities) == 0:
-        print(json.dumps({"type": "error", "msg": "Could not find any monitored groups in dialogs. Exiting."}), flush=True)
+        print(json.dumps({"type": "error", "msg": "Could not resolve any monitored groups. Exiting."}), flush=True)
         for c in clients:
             await c.disconnect()
         sys.exit(1)

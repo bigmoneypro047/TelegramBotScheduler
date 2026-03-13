@@ -16,10 +16,11 @@ let externalFailCount = 0;
 let schedulerRestartCount = 0;
 let startTime: Date | null = null;
 
-const SELF_PING_INTERVAL = 2 * 1000;
-const EXTERNAL_PING_INTERVAL = 30 * 1000;
-const WATCHDOG_INTERVAL = 60 * 1000;
-const SCHEDULER_GUARD_INTERVAL = 10 * 1000;
+const SELF_PING_INTERVAL = 1000;
+const EXTERNAL_PING_INTERVAL = 15 * 1000;
+const WATCHDOG_INTERVAL = 30 * 1000;
+const SCHEDULER_GUARD_INTERVAL = 5 * 1000;
+const GREETING_GUARD_INTERVAL = 30 * 1000;
 
 function getLocalUrl(): string {
   const port = process.env.PORT || "5000";
@@ -43,7 +44,7 @@ async function selfPing(): Promise<boolean> {
   try {
     const url = `${getLocalUrl()}/api/health`;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeout = setTimeout(() => controller.abort(), 5000);
     const response = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
     if (response.ok) {
@@ -56,7 +57,6 @@ async function selfPing(): Promise<boolean> {
     return false;
   } catch (err: any) {
     failCount++;
-    log(`Self-ping failed: ${err.message}`, "watchdog");
     return false;
   }
 }
@@ -66,7 +66,7 @@ async function externalPing(): Promise<boolean> {
   if (!extUrl) return true;
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 10000);
     const response = await fetch(`${extUrl}/api/health`, { signal: controller.signal });
     clearTimeout(timeout);
     if (response.ok) {
@@ -103,25 +103,25 @@ async function watchdogCheck(): Promise<void> {
   const uptimeHours = Math.floor(uptimeMs / (1000 * 60 * 60));
   const uptimeMinutes = Math.floor((uptimeMs % (1000 * 60 * 60)) / (1000 * 60));
   const schedulerStatus = getSchedulerStatus();
+  const glStatus = getGreetingListenerStatus();
 
   log(
     `Watchdog — uptime: ${uptimeHours}h ${uptimeMinutes}m | ` +
-    `local pings: ${pingCount} ok/${failCount} fail | ` +
-    `external pings: ${externalPingCount} ok/${externalFailCount} fail | ` +
-    `scheduler: ${schedulerStatus.isRunning ? "RUNNING" : "DOWN"} (${schedulerStatus.jobCount} jobs) | ` +
-    `scheduler restarts: ${schedulerRestartCount}`,
+    `pings: ${pingCount}ok/${failCount}fail | ` +
+    `ext: ${externalPingCount}ok/${externalFailCount}fail | ` +
+    `scheduler: ${schedulerStatus.isRunning ? "UP" : "DOWN"} (${schedulerStatus.jobCount} jobs) | ` +
+    `greeting: ${glStatus.isRunning ? "UP" : "DOWN"} | ` +
+    `restarts: sched=${schedulerRestartCount} greet=${glStatus.restartCount}`,
     "watchdog"
   );
 
   const pingOk = await selfPing();
   if (!pingOk) {
-    log("Watchdog: local ping failed, retrying in 5s...", "watchdog");
-    await new Promise(r => setTimeout(r, 5000));
+    log("Watchdog: local ping failed, retrying in 2s...", "watchdog");
+    await new Promise(r => setTimeout(r, 2000));
     const retryOk = await selfPing();
     if (!retryOk) {
       log("Watchdog: CRITICAL — server unresponsive after retry", "watchdog");
-    } else {
-      log("Watchdog: recovery ping succeeded", "watchdog");
     }
   }
 }
@@ -130,7 +130,7 @@ export function startWatchdog(): void {
   if (selfPingInterval || watchdogInterval) return;
 
   startTime = new Date();
-  log("Watchdog ACTIVATED — self-ping every 2s, external ping every 30s, scheduler guard every 10s", "watchdog");
+  log("Watchdog ACTIVATED — ping:1s, ext:15s, scheduler-guard:5s, greeting-guard:30s, watchdog:30s", "watchdog");
 
   let consecutiveFails = 0;
   selfPingInterval = setInterval(async () => {
@@ -138,12 +138,12 @@ export function startWatchdog(): void {
     if (!ok) {
       consecutiveFails++;
       if (consecutiveFails >= 3) {
-        log(`ALERT: ${consecutiveFails} consecutive self-ping failures — server may be unresponsive`, "watchdog");
+        log(`ALERT: ${consecutiveFails} consecutive ping failures`, "watchdog");
         schedulerGuard();
       }
     } else {
       if (consecutiveFails > 0) {
-        log(`Self-ping recovered after ${consecutiveFails} failures`, "watchdog");
+        log(`Ping recovered after ${consecutiveFails} failures`, "watchdog");
       }
       consecutiveFails = 0;
     }
@@ -163,14 +163,38 @@ export function startWatchdog(): void {
 
   const isDev = process.env.NODE_ENV === "development";
 
-  log("Greeting listener DISABLED — uses GramJS which conflicts with Telethon sessions. Will be replaced with Telethon-based listener.", "watchdog");
+  if (!isDev) {
+    greetingGuardInterval = setInterval(() => {
+      const glStatus = getGreetingListenerStatus();
+      if (!glStatus.isRunning) {
+        if (glStatus.restartCount > 15) {
+          return;
+        }
+        log("Greeting guard: listener is DOWN — auto-restarting...", "watchdog");
+        startGreetingListener().catch(err => {
+          log(`Greeting guard restart failed: ${err.message}`, "watchdog");
+        });
+      }
+    }, GREETING_GUARD_INTERVAL);
+  } else {
+    log("DEV MODE: Greeting listener guard disabled to avoid session conflicts with production", "watchdog");
+  }
 
   setTimeout(async () => {
     const ok = await selfPing();
     log(`Initial self-ping: ${ok ? "OK" : "FAILED"}`, "watchdog");
 
     schedulerGuard();
-  }, 5000);
+
+    if (!isDev) {
+      setTimeout(() => {
+        log("Auto-starting greeting listener (Telethon-based, no session conflicts)...", "watchdog");
+        startGreetingListener().catch(err => {
+          log(`Greeting listener auto-start failed: ${err.message}`, "watchdog");
+        });
+      }, 10000);
+    }
+  }, 3000);
 }
 
 export function stopWatchdog(): void {
