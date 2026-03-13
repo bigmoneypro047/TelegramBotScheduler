@@ -3,6 +3,7 @@ import json
 import asyncio
 from telethon import TelegramClient
 from telethon.sessions import StringSession
+from telethon.tl.types import PeerChannel
 
 async def send_message(session_string, api_id, api_hash, chat_id, message):
     client = TelegramClient(StringSession(session_string), int(api_id), api_hash)
@@ -14,25 +15,12 @@ async def send_message(session_string, api_id, api_hash, chat_id, message):
         return
     
     try:
-        dialogs = await client.get_dialogs()
-        
         target_id = int(chat_id)
-        entity = None
-        for dialog in dialogs:
-            if dialog.entity and hasattr(dialog.entity, 'id'):
-                eid = dialog.entity.id
-                if hasattr(dialog.entity, 'megagroup') or hasattr(dialog.entity, 'broadcast'):
-                    full_id = -1000000000000 - eid
-                else:
-                    full_id = -eid
-                if full_id == target_id:
-                    entity = dialog.entity
-                    break
-        
-        if entity is None:
-            print(json.dumps({"success": False, "error": f"Could not find group {chat_id} in dialogs"}))
-            await client.disconnect()
-            return
+        if target_id < -1000000000000:
+            channel_id = abs(target_id) - 1000000000000
+            entity = await client.get_entity(PeerChannel(channel_id))
+        else:
+            entity = await client.get_entity(target_id)
         
         await client.send_message(entity, message)
         new_session = client.session.save()
@@ -40,7 +28,10 @@ async def send_message(session_string, api_id, api_hash, chat_id, message):
         print(json.dumps({"success": True, "session": new_session}))
     except Exception as e:
         print(json.dumps({"success": False, "error": str(e)}))
-        await client.disconnect()
+        try:
+            await client.disconnect()
+        except:
+            pass
 
 async def login_request_code(api_id, api_hash, phone):
     client = TelegramClient(StringSession(), int(api_id), api_hash)
