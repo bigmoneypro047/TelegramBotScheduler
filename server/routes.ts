@@ -125,25 +125,20 @@ export async function registerRoutes(
 
   const loginSessions: Map<string, any> = new Map();
 
-  function getPythonPath(): string {
-    const path = require("path");
-    const fs = require("fs");
-    const candidates = [
-      path.join(process.cwd(), ".pythonlibs", "bin", "python3"),
-      "/home/runner/workspace/.pythonlibs/bin/python3",
-      "python3",
-    ];
-    for (const p of candidates) {
-      try { if (fs.existsSync(p)) return p; } catch {}
-    }
-    return "python3";
-  }
-
   async function runPython(args: string[]): Promise<any> {
     const { execFile } = await import("child_process");
     const { promisify } = await import("util");
+    const fs = await import("fs");
+    const pythonCandidates = [
+      `${process.cwd()}/.pythonlibs/bin/python3`,
+      "/home/runner/workspace/.pythonlibs/bin/python3",
+      "python3",
+    ];
+    let pythonBin = "python3";
+    for (const p of pythonCandidates) {
+      try { if (fs.existsSync(p)) { pythonBin = p; break; } } catch {}
+    }
     const execFileAsync = promisify(execFile);
-    const pythonBin = getPythonPath();
     try {
       const { stdout } = await execFileAsync(pythonBin, ["server/telegram_sender.py", ...args], { timeout: 30000 });
       return JSON.parse(stdout.trim());
