@@ -369,6 +369,26 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/direct-send", async (req, res) => {
+    try {
+      const { userbotIndex, groupId, message } = req.body;
+      const bots = await storage.getUserbots();
+      const bot = bots[userbotIndex ?? 0];
+      if (!bot || !bot.sessionString || !bot.apiId || !bot.apiHash) {
+        return res.status(400).json({ error: `Userbot ${(userbotIndex ?? 0) + 1} not configured` });
+      }
+      const result = await runPython([
+        "send", bot.sessionString, bot.apiId, bot.apiHash, groupId, message
+      ]);
+      if (!result.success) {
+        return res.status(500).json({ error: result.error });
+      }
+      res.json({ success: true, bot: bot.name, groupId });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/trigger-ready-test", async (_req, res) => {
     try {
       const result = await triggerReadyWindowNow();
