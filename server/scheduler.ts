@@ -693,6 +693,25 @@ async function executeScheduledMessage(botName: string, groupName: string, messa
 
 let lastHeartbeat: Date | null = null;
 
+const recentlySent = new Map<string, number>();
+const DEDUP_WINDOW_MS = 10 * 60 * 1000;
+
+function isDuplicate(botName: string, groupName: string, message: string): boolean {
+  const key = `${botName}|${groupName}|${message.substring(0, 80)}`;
+  const lastSent = recentlySent.get(key);
+  if (lastSent && Date.now() - lastSent < DEDUP_WINDOW_MS) {
+    return true;
+  }
+  recentlySent.set(key, Date.now());
+  if (recentlySent.size > 2000) {
+    const cutoff = Date.now() - DEDUP_WINDOW_MS;
+    for (const [k, v] of recentlySent) {
+      if (v < cutoff) recentlySent.delete(k);
+    }
+  }
+  return false;
+}
+
 interface FailedMessage {
   botName: string;
   groupName: string;
@@ -748,6 +767,10 @@ async function sendOneMessage(
   message: string,
   period: string
 ): Promise<void> {
+  if (isDuplicate(botName, groupName, message)) {
+    log(`[${period}] DEDUP SKIP: ${botName} → ${groupName} (already sent within ${DEDUP_WINDOW_MS / 60000}min)`, "scheduler");
+    return;
+  }
   log(`[${period}] SEND START: ${botName} → ${groupName}`, "scheduler");
   try {
     await safeExecuteScheduledMessage(botName, groupName, message, period);
