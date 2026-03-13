@@ -254,6 +254,10 @@ export async function startGreetingListener(): Promise<{ started: boolean; reaso
 
       if (!intentionalStop && code !== 0) {
         restartCount++;
+        if (restartCount > 10) {
+          log(`Greeting listener reached max restarts (${restartCount}). Stopping auto-restart. Re-authenticate bots from the production dashboard to fix.`, "greeting");
+          return;
+        }
         const delay = Math.min(restartCount * 30000, 300000);
         log(`Greeting listener will restart in ${delay / 1000}s (restart #${restartCount})`, "greeting");
         restartTimer = setTimeout(() => {
@@ -305,6 +309,11 @@ export function stopGreetingListener(): void {
   } else {
     isRunning = false;
   }
+}
+
+export function resetGreetingListenerRestarts() {
+  restartCount = 0;
+  log("Greeting listener restart count reset", "greeting");
 }
 
 export function getGreetingListenerStatus() {

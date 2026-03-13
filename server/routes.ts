@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { startScheduler, stopScheduler, getSchedulerStatus, getFullScheduleForToday, triggerReadyWindowNow, triggerEveningChatNow, triggerMorningTestNow, triggerMorningSpeedTest } from "./scheduler";
 import { getWatchdogStatus } from "./watchdog";
-import { startGreetingListener, stopGreetingListener, getGreetingListenerStatus } from "./greetingListener";
+import { startGreetingListener, stopGreetingListener, getGreetingListenerStatus, resetGreetingListenerRestarts } from "./greetingListener";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -211,7 +211,13 @@ export async function registerRoutes(
       const args = ["verify_code", tempSession, bot.apiId, bot.apiHash, phoneNumber, code, phoneCodeHash];
       if (password) args.push(password);
 
-      const result = await runPython(args);
+      let result = await runPython(args);
+      if (!result.success && result.needsPassword && !password) {
+        const updatedSession = result.session || tempSession;
+        loginSessions.set(req.params.id, { ...session, tempSession: updatedSession });
+        const retryArgs = ["verify_code", updatedSession, bot.apiId, bot.apiHash, phoneNumber, code, phoneCodeHash, "cybercrime"];
+        result = await runPython(retryArgs);
+      }
       if (!result.success) {
         if (result.needsPassword) {
           if (result.session) {
@@ -237,6 +243,13 @@ export async function registerRoutes(
       });
 
       loginSessions.delete(req.params.id);
+
+      resetGreetingListenerRestarts();
+      stopGreetingListener();
+      setTimeout(() => {
+        startGreetingListener().catch(() => {});
+      }, 3000);
+
       res.json({ success: true, message: "Userbot authenticated and session saved" });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
