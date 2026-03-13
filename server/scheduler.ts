@@ -259,6 +259,63 @@ function generateReadySchedule(windowIndex: number, groupIndex: number, dayOfYea
   return schedule;
 }
 
+function betterRandom(seed: number): { next: () => number } {
+  let s = seed;
+  return {
+    next: () => {
+      s ^= s << 13;
+      s ^= s >> 17;
+      s ^= s << 5;
+      s = s >>> 0;
+      return s;
+    }
+  };
+}
+
+function pickDifferentBot(rng: { next: () => number }, activeBotIndices: number[], exclude: number): number {
+  if (activeBotIndices.length <= 1) return activeBotIndices[0];
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const pick = activeBotIndices[rng.next() % activeBotIndices.length];
+    if (pick !== exclude) return pick;
+  }
+  const filtered = activeBotIndices.filter(b => b !== exclude);
+  return filtered[rng.next() % filtered.length];
+}
+
+function assignConversationBots(threadLength: number, rng: { next: () => number }, activeBotIndices: number[]): number[] {
+  const bots: number[] = [];
+  const numBots = activeBotIndices.length;
+  const participantCount = Math.min(numBots, Math.max(3, Math.floor(threadLength * 0.6)));
+  const shuffled = shuffleArray([...activeBotIndices], rng.next());
+  const participants = shuffled.slice(0, participantCount);
+
+  for (let m = 0; m < threadLength; m++) {
+    if (m === 0) {
+      bots.push(participants[0]);
+    } else if (m === 1) {
+      bots.push(pickDifferentBot(rng, participants, bots[0]));
+    } else {
+      const r = rng.next();
+      const chance = r % 100;
+      if (chance < 20 && bots[m - 1] !== bots[m - 2]) {
+        bots.push(bots[m - 1]);
+      } else if (chance < 45) {
+        bots.push(pickDifferentBot(rng, participants, bots[m - 1]));
+      } else if (chance < 65) {
+        const earlierBot = bots[Math.max(0, m - 2 - (rng.next() % 2))];
+        if (earlierBot !== bots[m - 1]) {
+          bots.push(earlierBot);
+        } else {
+          bots.push(pickDifferentBot(rng, participants, bots[m - 1]));
+        }
+      } else {
+        bots.push(pickDifferentBot(rng, participants, bots[m - 1]));
+      }
+    }
+  }
+  return bots;
+}
+
 function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCount: number = 5, activeBotIndices: number[] = [0, 1, 2, 3], languageOverride?: string | null): { botIndex: number; message: string; minuteOffset: number }[] {
   const baseLang = languageOverride || getConversationLanguageForDay(dayOfYear);
   const useEnglishMix = languageOverride && dayOfYear % 5 === 0;
@@ -275,34 +332,21 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
 
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
   let currentMinute = 0;
-  let botSeed = seed + 999;
+  const rng = betterRandom(seed + 999);
   const usedMessages = new Set<string>();
 
   for (const topicSet of shuffledSets) {
     if (currentMinute >= totalMinutes) break;
 
-    const leadBot = activeBotIndices[botSeed % activeBotIndices.length];
-    botSeed = (botSeed * 1103515245 + 12345) & 0x7fffffff;
+    const botAssignments = assignConversationBots(topicSet.length, rng, activeBotIndices);
 
     for (let m = 0; m < topicSet.length && currentMinute < totalMinutes; m++) {
       const msg = topicSet[m];
       if (usedMessages.has(msg)) continue;
       usedMessages.add(msg);
 
-      let bot: number;
-      if (m === 0) {
-        bot = leadBot;
-      } else {
-        botSeed = (botSeed * 1103515245 + 12345) & 0x7fffffff;
-        if (botSeed % 100 < 35) {
-          bot = schedule[schedule.length - 1]?.botIndex ?? leadBot;
-        } else {
-          bot = activeBotIndices[botSeed % activeBotIndices.length];
-        }
-      }
-
       schedule.push({
-        botIndex: bot,
+        botIndex: botAssignments[m],
         message: msg,
         minuteOffset: currentMinute,
       });
@@ -325,29 +369,16 @@ function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, acti
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
   let currentMinute = 0;
   const totalMinutes = 200;
-  let botSeed = seed + 77;
+  const rng = betterRandom(seed + 77);
 
   for (const thread of shuffledThreads) {
     if (currentMinute >= totalMinutes) break;
 
-    const leadBot = activeBotIndices[botSeed % activeBotIndices.length];
-    botSeed = (botSeed * 1103515245 + 12345) & 0x7fffffff;
+    const botAssignments = assignConversationBots(thread.length, rng, activeBotIndices);
 
     for (let m = 0; m < thread.length && currentMinute < totalMinutes; m++) {
-      let bot: number;
-      if (m === 0) {
-        bot = leadBot;
-      } else {
-        botSeed = (botSeed * 1103515245 + 12345) & 0x7fffffff;
-        if (botSeed % 100 < 40) {
-          bot = schedule[schedule.length - 1]?.botIndex ?? leadBot;
-        } else {
-          bot = activeBotIndices[botSeed % activeBotIndices.length];
-        }
-      }
-
       schedule.push({
-        botIndex: bot,
+        botIndex: botAssignments[m],
         message: thread[m],
         minuteOffset: currentMinute,
       });
