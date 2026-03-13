@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { execFile } from "child_process";
+import path from "path";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { startScheduler, stopScheduler, getSchedulerStatus, getFullScheduleForToday, triggerReadyWindowNow, triggerEveningChatNow, triggerMorningTestNow, triggerMorningSpeedTest } from "./scheduler";
@@ -129,8 +130,21 @@ export async function registerRoutes(
 
   const loginSessions: Map<string, any> = new Map();
 
+  function getPythonPath(): string {
+    const candidates = [
+      path.join(process.cwd(), ".pythonlibs", "bin", "python3"),
+      "/home/runner/workspace/.pythonlibs/bin/python3",
+      "/usr/bin/python3",
+      "python3",
+    ];
+    for (const p of candidates) {
+      try { require("fs").accessSync(p, require("fs").constants.X_OK); return p; } catch {}
+    }
+    return "python3";
+  }
+
   async function runPython(args: string[]): Promise<any> {
-    const pythonBin = `${process.cwd()}/.pythonlibs/bin/python3`;
+    const pythonBin = getPythonPath();
     try {
       const { stdout } = await execFileAsync(pythonBin, ["server/telegram_sender.py", ...args], { timeout: 30000 });
       return JSON.parse(stdout.trim());
