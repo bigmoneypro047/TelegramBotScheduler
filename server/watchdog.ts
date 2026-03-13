@@ -28,6 +28,10 @@ function getLocalUrl(): string {
 }
 
 function getExternalUrl(): string | null {
+  const renderUrl = process.env.RENDER_EXTERNAL_URL;
+  if (renderUrl) {
+    return renderUrl;
+  }
   const replSlug = process.env.REPL_SLUG;
   const replOwner = process.env.REPL_OWNER;
   if (replSlug && replOwner) {

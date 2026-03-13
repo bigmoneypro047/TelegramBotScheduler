@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.replit
+.local
+.config
+.cache
+.upm
+replit.nix
+replit_zip_error_log.txt
+generated-icon.png
+attached_assets

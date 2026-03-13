@@ -1,0 +1,28 @@
+databases:
+  - name: telegram-bot-db
+    plan: free
+    databaseName: telegram_bot
+    user: telegram_bot_user
+
+services:
+  - type: web
+    plan: free
+    name: telegram-bot-scheduler
+    runtime: node
+    buildCommand: |
+      npm install &&
+      pip install telethon cryptg &&
+      npm run build
+    startCommand: node dist/index.cjs
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: telegram-bot-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
