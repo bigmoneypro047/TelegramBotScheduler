@@ -1,9 +1,13 @@
 import cron from "node-cron";
 import path from "path";
 import fs from "fs";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { storage } from "./storage";
 import { log } from "./index";
 import { MORNING_THREADS_BY_LANG, MORNING_CHAT_MESSAGES as MORNING_CHAT_BY_LANG, EVENING_CHAT_TOPICS as EVENING_CHAT_BY_LANG, CONVERSATION_LANGUAGES, getConversationLanguageForDay } from "./messages";
+
+const execFileAsync = promisify(execFile);
 
 const NIGERIA_TZ = "Africa/Lagos";
 
@@ -549,9 +553,6 @@ async function sendUserbotMessage(sessionString: string, apiId: string, apiHash:
   }
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const { execFile } = await import("child_process");
-      const { promisify } = await import("util");
-      const execFileAsync = promisify(execFile);
       const pythonBin = getPythonPath();
       const { stdout } = await execFileAsync(pythonBin, [
         "server/telegram_sender.py", "send",
@@ -720,9 +721,6 @@ async function sendOneMessage(
 
 async function checkPythonAvailable(): Promise<boolean> {
   try {
-    const { execFile } = await import("child_process");
-    const { promisify } = await import("util");
-    const execFileAsync = promisify(execFile);
     const pythonBin = getPythonPath();
     log(`Python path resolved to: ${pythonBin}`, "scheduler");
     const { stdout } = await execFileAsync(pythonBin, ["-c", "from telethon.sync import TelegramClient; print('OK')"], { timeout: 15000 });
