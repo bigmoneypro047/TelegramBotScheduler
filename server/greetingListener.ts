@@ -221,6 +221,7 @@ export async function startGreetingListener(): Promise<{ started: boolean; reaso
             }
           } else if (msg.type === "started") {
             log(`Greeting listener ACTIVE: ${msg.msg}`, "greeting");
+            restartCount = 0;
           } else if (msg.type === "error") {
             log(`Greeting listener ERROR: ${msg.msg}`, "greeting");
           } else {

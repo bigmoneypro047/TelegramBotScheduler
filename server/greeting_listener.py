@@ -269,26 +269,42 @@ async def main():
         print(json.dumps({"type": "error", "msg": "No bots provided"}), flush=True)
         return
 
-    bot = bots_data[0]
-    try:
-        listener_client = TelegramClient(
-            StringSession(bot["session"]),
-            int(bot["apiId"]),
-            bot["apiHash"]
-        )
-        await listener_client.connect()
-        if not await listener_client.is_user_authorized():
-            print(json.dumps({"type": "error", "msg": "Bot 1 not authorized"}), flush=True)
-            await listener_client.disconnect()
-            sys.exit(1)
-        me = await listener_client.get_me()
-        print(json.dumps({"type": "log", "msg": f"Bot 1 ({me.first_name}) connected as listener"}), flush=True)
-    except Exception as e:
-        print(json.dumps({"type": "error", "msg": f"Bot 1 connection failed: {str(e)}"}), flush=True)
+    listener_client = None
+    connected_bot_index = -1
+
+    for i, bot in enumerate(bots_data):
+        try:
+            client = TelegramClient(
+                StringSession(bot["session"]),
+                int(bot["apiId"]),
+                bot["apiHash"]
+            )
+            await client.connect()
+            if not await client.is_user_authorized():
+                print(json.dumps({"type": "log", "msg": f"Bot {i+1} not authorized, trying next..."}), flush=True)
+                await client.disconnect()
+                continue
+            me = await client.get_me()
+            print(json.dumps({"type": "log", "msg": f"Bot {i+1} ({me.first_name}) connected as listener"}), flush=True)
+            listener_client = client
+            connected_bot_index = i
+            break
+        except Exception as e:
+            err_msg = str(e)
+            print(json.dumps({"type": "log", "msg": f"Bot {i+1} connection failed: {err_msg}, trying next..."}), flush=True)
+            try:
+                await client.disconnect()
+            except:
+                pass
+            continue
+
+    if listener_client is None:
+        print(json.dumps({"type": "error", "msg": "All bots failed to connect. Exiting."}), flush=True)
         sys.exit(1)
 
     clients = [listener_client]
-    bot_indices = [0]
+    bot_indices = [connected_bot_index]
+    bot_label = f"Bot {connected_bot_index + 1}"
 
     group_entities = {}
     try:
@@ -375,15 +391,15 @@ async def main():
                 await listener_client.send_message(group_entities[chat_id_str], response)
                 print(json.dumps({
                     "type": "greeting_sent",
-                    "msg": f"Bot 1 replied '{response}' ({lang}) in chat {chat.id}",
-                    "botIndex": 0,
+                    "msg": f"{bot_label} replied '{response}' ({lang}) in chat {chat.id}",
+                    "botIndex": connected_bot_index,
                     "response": response,
                     "chatId": chat_id_str,
                 }), flush=True)
             except Exception as e:
                 print(json.dumps({
                     "type": "error",
-                    "msg": f"Bot 1 failed to respond: {str(e)}",
+                    "msg": f"{bot_label} failed to respond: {str(e)}",
                 }), flush=True)
 
             extra_responses = []
@@ -401,7 +417,7 @@ async def main():
         except Exception as e:
             print(json.dumps({"type": "error", "msg": f"Handler error: {str(e)}"}), flush=True)
 
-    print(json.dumps({"type": "started", "msg": f"Greeting listener active with Bot 1 monitoring {len(group_entities)} groups"}), flush=True)
+    print(json.dumps({"type": "started", "msg": f"Greeting listener active with {bot_label} monitoring {len(group_entities)} groups"}), flush=True)
 
     try:
         await listener_client.run_until_disconnected()
