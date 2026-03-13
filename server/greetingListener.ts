@@ -149,6 +149,15 @@ export async function startGreetingListener(): Promise<{ started: boolean; reaso
   }
 
   try {
+    if (restartCount === 0 && !lastStartTime) {
+      log("Greeting listener: waiting 45s after startup before connecting (deployment grace period)...", "greeting");
+      await new Promise(r => setTimeout(r, 45000));
+      if (intentionalStop) {
+        isStarting = false;
+        return { started: false, reason: "stopped_during_delay" };
+      }
+    }
+
     const data = await getDataWithRetry();
     if (!data) {
       const reason = "DB not ready or insufficient bots/groups after retries";
