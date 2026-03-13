@@ -334,21 +334,22 @@ export async function registerRoutes(
 
   app.post("/api/test-userbot", async (req, res) => {
     try {
-      const { userbotIndex } = req.body;
+      const { userbotIndex, groupIndex, message } = req.body;
       const bots = await storage.getUserbots();
       const bot = bots[userbotIndex ?? 0];
       if (!bot || !bot.sessionString || !bot.apiId || !bot.apiHash) {
         return res.status(400).json({ error: `Userbot ${(userbotIndex ?? 0) + 1} not configured` });
       }
       const groupsList = await storage.getGroups();
-      const group = groupsList[0];
+      const group = groupsList[groupIndex ?? 0];
       if (!group || !group.groupId) {
-        return res.status(400).json({ error: "Group 1 not found or has no group ID" });
+        return res.status(400).json({ error: `Group ${(groupIndex ?? 0) + 1} not found or has no group ID` });
       }
 
+      const msg = message || `Test message from ${bot.name} - System check!`;
       const result = await runPython([
         "send", bot.sessionString, bot.apiId, bot.apiHash,
-        group.groupId, `Test message from ${bot.name} - System check!`
+        group.groupId, msg
       ]);
 
       if (!result.success) {
