@@ -183,7 +183,7 @@ export default function Configuration() {
 
 function UserbotLoginRow({ bot }: { bot: any }) {
   const { toast } = useToast();
-  const [phone, setPhone] = useState(bot.phoneNumber || "");
+  const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [step, setStep] = useState<"idle" | "entering_phone" | "code_sent" | "needs_password">("idle");
@@ -288,7 +288,7 @@ function UserbotLoginRow({ bot }: { bot: any }) {
       {step === "entering_phone" && (
         <div className="flex gap-2 pl-11">
           <Input
-            placeholder="Phone number with country code (e.g. +234...)"
+            placeholder={bot.phoneNumber ? `Enter full number (${bot.phoneNumber})` : "Phone number with country code (e.g. +234...)"}
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             className="h-8 text-xs flex-1"
