@@ -316,10 +316,18 @@ function assignConversationBots(threadLength: number, rng: { next: () => number 
   return bots;
 }
 
+function resolveGroupLanguage(languageOverride: string | null | undefined, dayOfYear: number): string {
+  if (!languageOverride) return getConversationLanguageForDay(dayOfYear);
+  const langs = languageOverride.split(",").map(l => l.trim()).filter(Boolean);
+  if (langs.length === 0) return getConversationLanguageForDay(dayOfYear);
+  if (langs.length === 1) {
+    return (dayOfYear % 5 === 0) ? "English" : langs[0];
+  }
+  return langs[dayOfYear % langs.length];
+}
+
 function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCount: number = 5, activeBotIndices: number[] = [0, 1, 2, 3], languageOverride?: string | null): { botIndex: number; message: string; minuteOffset: number }[] {
-  const baseLang = languageOverride || getConversationLanguageForDay(dayOfYear);
-  const useEnglishMix = languageOverride && dayOfYear % 5 === 0;
-  const lang = useEnglishMix ? "English" : baseLang;
+  const lang = resolveGroupLanguage(languageOverride, dayOfYear);
   const eveningTopics = EVENING_CHAT_BY_LANG[lang] || EVENING_CHAT_BY_LANG["English"];
   const dayOfWeek = getNigeriaDate().getDay();
   const topicSets = eveningTopics[dayOfWeek] || eveningTopics[0];
@@ -358,9 +366,7 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
 }
 
 function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3], languageOverride?: string | null): { botIndex: number; message: string; minuteOffset: number }[] {
-  const baseLang = languageOverride || getConversationLanguageForDay(dayOfYear);
-  const useEnglishMix = languageOverride && dayOfYear % 5 === 0;
-  const lang = useEnglishMix ? "English" : baseLang;
+  const lang = resolveGroupLanguage(languageOverride, dayOfYear);
   const threads = MORNING_THREADS_BY_LANG[lang] || MORNING_THREADS_BY_LANG["English"];
   const seed = dayOfYear * 50 + groupIndex * 7;
 
