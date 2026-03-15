@@ -1088,30 +1088,35 @@ async function recoverInProgressSessions(): Promise<void> {
   const dayOfYear = getDayOfYear();
   log(`RECOVERY: ${groupsList.length} groups loaded, WAT time ${hour}:${minute.toString().padStart(2,'0')}, checking sessions...`, "scheduler");
 
-  const nightStart = 3 * 60;
-  const nightEnd = 5 * 60;
-  if (currentMinutes >= nightStart && currentMinutes < nightEnd) {
-    const elapsedMinutes = currentMinutes - nightStart;
-    log(`RECOVERY: Server restarted during night session (${elapsedMinutes}min elapsed). Scheduling remaining...`, "scheduler");
+  const lifestyleRecoverySlots = [
+    { startMin: 3 * 60, endMin: 5 * 60, label: "3:00 AM", slotSeed: 0 },
+    { startMin: 15 * 60 + 10, endMin: 17 * 60, label: "3:10 PM", slotSeed: 100 },
+  ];
 
-    const nightItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
-    for (let g = 0; g < groupsList.length; g++) {
-      const langOverride = (groupsList[g] as any).languageOverride || null;
-      const items = generateNightSchedule(g, dayOfYear, activeBots, langOverride);
-      const remaining = items.filter(item => item.minuteOffset > elapsedMinutes);
-      for (const item of remaining) {
-        nightItems.push({
-          botName: `Userbot ${item.botIndex + 1}`,
-          groupName: groupsList[g].name,
-          message: item.message,
-          delayMs: (item.minuteOffset - elapsedMinutes) * 60 * 1000,
-        });
+  for (const lsSlot of lifestyleRecoverySlots) {
+    if (currentMinutes >= lsSlot.startMin && currentMinutes < lsSlot.endMin) {
+      const elapsedMinutes = currentMinutes - lsSlot.startMin;
+      log(`RECOVERY: Server restarted during lifestyle session (${lsSlot.label}, ${elapsedMinutes}min elapsed). Scheduling remaining...`, "scheduler");
+
+      const lsItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
+      for (let g = 0; g < groupsList.length; g++) {
+        const langOverride = (groupsList[g] as any).languageOverride || null;
+        const items = generateNightSchedule(g, dayOfYear + lsSlot.slotSeed, activeBots, langOverride);
+        const remaining = items.filter(item => item.minuteOffset > elapsedMinutes);
+        for (const item of remaining) {
+          lsItems.push({
+            botName: `Userbot ${item.botIndex + 1}`,
+            groupName: groupsList[g].name,
+            message: item.message,
+            delayMs: (item.minuteOffset - elapsedMinutes) * 60 * 1000,
+          });
+        }
       }
-    }
-    nightItems.sort((a, b) => a.delayMs - b.delayMs);
-    if (nightItems.length > 0) {
-      const count = scheduleMessagesWithTimers(nightItems, "night_recovery");
-      log(`RECOVERY: ${count} night messages scheduled`, "scheduler");
+      lsItems.sort((a, b) => a.delayMs - b.delayMs);
+      if (lsItems.length > 0) {
+        const count = scheduleMessagesWithTimers(lsItems, `lifestyle_recovery_${lsSlot.label}`);
+        log(`RECOVERY: ${count} lifestyle messages scheduled for ${lsSlot.label}`, "scheduler");
+      }
     }
   }
 
@@ -1359,35 +1364,43 @@ export function startScheduler() {
     scheduledJobs.push(doneJob);
   }
 
-  const nightJob = cron.schedule("0 3 * * *", async () => {
-    try {
-      log("=== NIGHT SESSION TRIGGERED (3:00 AM - 5:00 AM) ===", "scheduler");
-      const dayOfYear = getDayOfYear();
-      const groupsList = await getGroupsWithRetry();
-      const activeBots = await getActiveBotIndices();
-      log(`Night session: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
+  const lifestyleSlots = [
+    { cron: "0 3 * * *", label: "3:00 AM", slotSeed: 0 },
+    { cron: "10 15 * * *", label: "3:10 PM", slotSeed: 100 },
+  ];
 
-      const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
-      for (let g = 0; g < groupsList.length; g++) {
-        const langOverride = (groupsList[g] as any).languageOverride || null;
-        const items = generateNightSchedule(g, dayOfYear, activeBots, langOverride);
-        for (const item of items) {
-          allItems.push({
-            botName: `Userbot ${item.botIndex + 1}`,
-            groupName: groupsList[g].name,
-            message: item.message,
-            delayMs: item.minuteOffset * 60 * 1000,
-          });
+  for (const lsSlot of lifestyleSlots) {
+    const slotSeed = lsSlot.slotSeed;
+    const lifestyleJob = cron.schedule(lsSlot.cron, async () => {
+      try {
+        log(`=== LIFESTYLE SESSION TRIGGERED (${lsSlot.label}) ===`, "scheduler");
+        const dayOfYear = getDayOfYear();
+        const groupsList = await getGroupsWithRetry();
+        const activeBots = await getActiveBotIndices();
+        log(`Lifestyle ${lsSlot.label}: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
+
+        const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
+        for (let g = 0; g < groupsList.length; g++) {
+          const langOverride = (groupsList[g] as any).languageOverride || null;
+          const items = generateNightSchedule(g, dayOfYear + slotSeed, activeBots, langOverride);
+          for (const item of items) {
+            allItems.push({
+              botName: `Userbot ${item.botIndex + 1}`,
+              groupName: groupsList[g].name,
+              message: item.message,
+              delayMs: item.minuteOffset * 60 * 1000,
+            });
+          }
         }
+        allItems.sort((a, b) => a.delayMs - b.delayMs);
+        const count = scheduleMessagesWithTimers(allItems, `lifestyle_${lsSlot.label}`);
+        log(`Lifestyle ${lsSlot.label}: ${count} messages scheduled across ${groupsList.length} groups over ~120 min`, "scheduler");
+      } catch (err: any) {
+        log(`CRITICAL: Lifestyle session (${lsSlot.label}) crashed: ${err.message}\n${err.stack}`, "scheduler");
       }
-      allItems.sort((a, b) => a.delayMs - b.delayMs);
-      const count = scheduleMessagesWithTimers(allItems, "night_session");
-      log(`Night session: ${count} messages scheduled across ${groupsList.length} groups over ~120 min`, "scheduler");
-    } catch (err: any) {
-      log(`CRITICAL: Night session crashed: ${err.message}\n${err.stack}`, "scheduler");
-    }
-  }, { timezone: NIGERIA_TZ });
-  scheduledJobs.push(nightJob);
+    }, { timezone: NIGERIA_TZ });
+    scheduledJobs.push(lifestyleJob);
+  }
 
   const eveningJob = cron.schedule("25 15 * * *", async () => {
     try {
