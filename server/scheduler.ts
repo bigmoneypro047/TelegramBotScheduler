@@ -922,6 +922,8 @@ function generateDinnerSession(groupIndex: number, dayOfYear: number, slotSeed: 
   const comments = DINNER_COMMENTS[lang] || DINNER_COMMENTS["English"];
   const textStories = DINNER_TEXT_STORIES[lang] || DINNER_TEXT_STORIES["English"];
 
+  const captionIndex = (dayOfYear * 7 + groupIndex * 3 + slotSeed) % captions.length;
+
   const rng = betterRandom(dayOfYear * 100 + groupIndex * 17 + slotSeed);
 
   const leadBot = photo.assignedBot;
@@ -948,7 +950,7 @@ function generateDinnerSession(groupIndex: number, dayOfYear: number, slotSeed: 
 
   schedule.push({
     botIndex: leadBot,
-    message: captions[photoIndex % captions.length],
+    message: captions[captionIndex],
     minuteOffset: minute,
     photoFile: photo.file,
   });
