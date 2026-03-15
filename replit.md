@@ -1,7 +1,7 @@
 # Telegram Bot Automation Manager
 
 ## Overview
-A web dashboard for managing automated Telegram messaging across 5 groups using 1 main bot (@GateamAi_bot) and 6 userbots. Features scheduled messages in multiple languages with rotating content. Nigeria WAT timezone.
+A web dashboard for managing automated Telegram messaging across 7 groups using 1 main bot (@GateamAi_bot) and 9 userbots. Features scheduled messages in multiple languages with rotating content. Nigeria WAT timezone.
 
 ## Architecture
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui components
@@ -50,11 +50,21 @@ A web dashboard for managing automated Telegram messaging across 5 groups using 
 - 2FA password: "cybercrime"
 
 ## Schedule Windows (Nigeria Time WAT)
+- 3:00 AM: Dinner lifestyle session (night photos, "last night I invited...")
 - 5:00 AM: Morning chat (5 min gaps between userbots)
 - 8:10 AM: Main bot daily message (rotated language)
 - 8:20, 9:20, 11:20, 12:20, 1:20, 2:20: Ready messages (1-3 min gaps)
+- 3:10 PM: Dinner lifestyle session (day photos, "today I invited...")
 - 3:20-3:40 PM: "Done" messages (5 min gaps)
 - 3:25-7:00 PM: Evening discussion (5 min gaps, unique per group)
+
+## Dinner Lifestyle Photos (60 total in server/meals/)
+- 60 meal photos (meal_01.jpg to meal_60.jpg) classified as day or night
+- Night photos: dark/dim/candlelit scenes for 3AM session
+- Day photos: bright/well-lit scenes for 3:10PM session
+- Each session selects unique photos per group ensuring no bot sends photos to more than one group
+- Dual caption banks: PHOTO_CAPTIONS_NIGHT ("last night I invited...") and PHOTO_CAPTIONS_DAY ("today I invited...")
+- Bot assignments cycle 0-8 across all photo entries
 
 ## Languages
 - **Main bot message rotation (8 languages)**: English, Spanish, French, Arabic, Filipino, Indonesian, Urdu, Vietnamese
