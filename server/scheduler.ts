@@ -544,6 +544,13 @@ const DINNER_PHOTOS: { file: string; assignedBot: number; timeOfDay: "day" | "ni
   { file: "meal_138.jpg", assignedBot: 2, timeOfDay: "night" },
   { file: "meal_139.jpg", assignedBot: 3, timeOfDay: "day" },
   { file: "meal_140.jpg", assignedBot: 4, timeOfDay: "day" },
+  { file: "meal_141.jpg", assignedBot: 5, timeOfDay: "day" },
+  { file: "meal_142.jpg", assignedBot: 6, timeOfDay: "day" },
+  { file: "meal_143.jpg", assignedBot: 7, timeOfDay: "day" },
+  { file: "meal_144.jpg", assignedBot: 8, timeOfDay: "night" },
+  { file: "meal_145.jpg", assignedBot: 0, timeOfDay: "night" },
+  { file: "meal_146.jpg", assignedBot: 1, timeOfDay: "night" },
+  { file: "meal_147.jpg", assignedBot: 2, timeOfDay: "day" },
 ];
 
 const PHOTO_CAPTIONS_NIGHT: Record<string, string[]> = {
