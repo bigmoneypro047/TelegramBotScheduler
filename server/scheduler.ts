@@ -1018,18 +1018,23 @@ function selectUniquePhotosForSession(dayOfYear: number, slotSeed: number, group
   return selected;
 }
 
-const PHOTOS_PER_GROUP = 4;
+const PHOTOS_PER_SESSION = 4;
 
-function selectMultiplePhotosForGroup(dayOfYear: number, slotSeed: number, groupIndex: number): typeof DINNER_PHOTOS {
+interface SessionPhotoSet {
+  photos: typeof DINNER_PHOTOS;
+  captionIndices: number[];
+}
+
+function selectSessionPhotos(dayOfYear: number, slotSeed: number): SessionPhotoSet {
   const isNightSession = slotSeed === 0;
   const timeFilter = isNightSession ? "night" : "day";
   const filteredPhotos = DINNER_PHOTOS.filter(p => p.timeOfDay === timeFilter);
 
   const selected: typeof DINNER_PHOTOS = [];
   const usedBots = new Set<number>();
-  const startIdx = (dayOfYear * 7 + groupIndex * 13 + slotSeed) % filteredPhotos.length;
+  const startIdx = (dayOfYear * 11 + slotSeed) % filteredPhotos.length;
 
-  for (let attempt = 0; attempt < filteredPhotos.length && selected.length < PHOTOS_PER_GROUP; attempt++) {
+  for (let attempt = 0; attempt < filteredPhotos.length && selected.length < PHOTOS_PER_SESSION; attempt++) {
     const photo = filteredPhotos[(startIdx + attempt) % filteredPhotos.length];
     if (!usedBots.has(photo.assignedBot)) {
       usedBots.add(photo.assignedBot);
@@ -1037,15 +1042,19 @@ function selectMultiplePhotosForGroup(dayOfYear: number, slotSeed: number, group
     }
   }
 
-  while (selected.length < PHOTOS_PER_GROUP) {
+  while (selected.length < PHOTOS_PER_SESSION) {
     const fallbackIdx = (startIdx + selected.length) % filteredPhotos.length;
     selected.push(filteredPhotos[fallbackIdx]);
   }
 
-  return selected;
+  const captionIndices = selected.map((_, p) => {
+    return (dayOfYear * 7 + slotSeed + p * 5) % 20;
+  });
+
+  return { photos: selected, captionIndices };
 }
 
-function generateDinnerSession(groupIndex: number, dayOfYear: number, slotSeed: number, activeBotIndices: number[], languageOverride?: string | null): DinnerScheduleItem[] {
+function generateDinnerSession(groupIndex: number, dayOfYear: number, slotSeed: number, activeBotIndices: number[], languageOverride?: string | null, sessionPhotos?: SessionPhotoSet): DinnerScheduleItem[] {
   const lang = resolveGroupLanguage(languageOverride, dayOfYear);
   const isNightSession = slotSeed === 0;
 
@@ -1055,7 +1064,9 @@ function generateDinnerSession(groupIndex: number, dayOfYear: number, slotSeed: 
 
   const rng = betterRandom(dayOfYear * 100 + groupIndex * 17 + slotSeed);
 
-  const photos = selectMultiplePhotosForGroup(dayOfYear, slotSeed, groupIndex);
+  const photoSet = sessionPhotos || selectSessionPhotos(dayOfYear, slotSeed);
+  const photos = photoSet.photos;
+  const captionIndices = photoSet.captionIndices;
 
   const photoBotIndices = photos.map(p => p.assignedBot);
   const commentBotPool = activeBotIndices.filter(b => photoBotIndices.indexOf(b) === -1);
@@ -1074,7 +1085,7 @@ function generateDinnerSession(groupIndex: number, dayOfYear: number, slotSeed: 
 
   for (let p = 0; p < photos.length; p++) {
     const photo = photos[p];
-    const captionIndex = (dayOfYear * 7 + groupIndex * 3 + slotSeed + p * 5) % captions.length;
+    const captionIndex = captionIndices[p] % captions.length;
 
     schedule.push({
       botIndex: photo.assignedBot,
@@ -1643,11 +1654,12 @@ async function recoverInProgressSessions(): Promise<void> {
 
       const mealsDir = getMealsDir();
       const period = `dinner_recovery_${lsSlot.label}`;
+      const recoverySessionPhotos = selectSessionPhotos(dayOfYear, lsSlot.slotSeed);
       let recoveryCount = 0;
 
       for (let g = 0; g < groupsList.length; g++) {
         const langOverride = (groupsList[g] as any).languageOverride || null;
-        const items = generateDinnerSession(g, dayOfYear, lsSlot.slotSeed, activeBots, langOverride);
+        const items = generateDinnerSession(g, dayOfYear, lsSlot.slotSeed, activeBots, langOverride, recoverySessionPhotos);
         const remaining = items.filter(item => item.minuteOffset > elapsedMinutes);
         for (const item of remaining) {
           const delayMs = (item.minuteOffset - elapsedMinutes) * 60 * 1000;
@@ -1936,7 +1948,9 @@ export function startScheduler() {
         const activeBots = await getActiveBotIndices();
         const isNightSession = slotSeed === 0;
         const timeFilter = isNightSession ? "night" : "day";
-        log(`Dinner ${lsSlot.label}: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}], ${PHOTOS_PER_GROUP} photos/group (${timeFilter})`, "scheduler");
+        const sessionPhotos = selectSessionPhotos(dayOfYear, slotSeed);
+        const photoSummary = sessionPhotos.photos.map(p => `${p.file}(Bot${p.assignedBot+1})`).join(", ");
+        log(`Dinner ${lsSlot.label}: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}], photos=[${photoSummary}] same across all groups (${timeFilter})`, "scheduler");
 
         const mealsDir = getMealsDir();
         const period = `dinner_${lsSlot.label}`;
@@ -1944,7 +1958,7 @@ export function startScheduler() {
 
         for (let g = 0; g < groupsList.length; g++) {
           const langOverride = (groupsList[g] as any).languageOverride || null;
-          const items = generateDinnerSession(g, dayOfYear, slotSeed, activeBots, langOverride);
+          const items = generateDinnerSession(g, dayOfYear, slotSeed, activeBots, langOverride, sessionPhotos);
           for (const item of items) {
             const delayMs = item.minuteOffset * 60 * 1000;
             const botName = `Userbot ${item.botIndex + 1}`;
