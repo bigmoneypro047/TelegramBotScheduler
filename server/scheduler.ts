@@ -154,13 +154,14 @@ const MAIN_BOT_MESSAGES: Record<string, string[]> = {
 
 const READY_MESSAGES = [
   "Ready",
+  "Ready",
+  "Ready",
+  "Ready",
+  "Ready",
+  "Ready",
   "I'm ready",
   "All set",
   "Ready for the signal",
-  "Waiting for the signal",
-  "I'm prepared",
-  "We are prepared",
-  "I'm active",
 ];
 
 
