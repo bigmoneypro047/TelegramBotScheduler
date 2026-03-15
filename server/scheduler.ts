@@ -591,6 +591,19 @@ const DINNER_PHOTOS: { file: string; assignedBot: number; timeOfDay: "day" | "ni
   { file: "meal_185.jpg", assignedBot: 4, timeOfDay: "day" },
   { file: "meal_186.jpg", assignedBot: 5, timeOfDay: "day" },
   { file: "meal_187.jpg", assignedBot: 6, timeOfDay: "night" },
+  { file: "meal_188.jpg", assignedBot: 7, timeOfDay: "night" },
+  { file: "meal_189.jpg", assignedBot: 8, timeOfDay: "night" },
+  { file: "meal_190.jpg", assignedBot: 0, timeOfDay: "night" },
+  { file: "meal_191.jpg", assignedBot: 1, timeOfDay: "night" },
+  { file: "meal_192.jpg", assignedBot: 2, timeOfDay: "day" },
+  { file: "meal_193.jpg", assignedBot: 3, timeOfDay: "night" },
+  { file: "meal_194.jpg", assignedBot: 4, timeOfDay: "night" },
+  { file: "meal_195.jpg", assignedBot: 5, timeOfDay: "night" },
+  { file: "meal_196.jpg", assignedBot: 6, timeOfDay: "night" },
+  { file: "meal_197.jpg", assignedBot: 7, timeOfDay: "night" },
+  { file: "meal_198.jpg", assignedBot: 8, timeOfDay: "night" },
+  { file: "meal_199.jpg", assignedBot: 0, timeOfDay: "night" },
+  { file: "meal_200.jpg", assignedBot: 1, timeOfDay: "night" },
 ];
 
 const PHOTO_CAPTIONS_NIGHT: Record<string, string[]> = {
