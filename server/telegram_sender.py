@@ -126,14 +126,19 @@ async def send_photo(session_string, api_id, api_hash, chat_id, photo_url, capti
         else:
             entity = await client.get_entity(target_id)
         
-        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
-        os.close(tmp_fd)
-        req = urllib.request.Request(photo_url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            with open(tmp_path, "wb") as f:
-                f.write(resp.read())
+        is_local = not photo_url.startswith("http://") and not photo_url.startswith("https://")
+        if is_local:
+            file_to_send = photo_url
+        else:
+            tmp_fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
+            os.close(tmp_fd)
+            req = urllib.request.Request(photo_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                with open(tmp_path, "wb") as f:
+                    f.write(resp.read())
+            file_to_send = tmp_path
 
-        await client.send_file(entity, tmp_path, caption=caption)
+        await client.send_file(entity, file_to_send, caption=caption)
         new_session = client.session.save()
         await client.disconnect()
         print(json.dumps({"success": True, "session": new_session}))

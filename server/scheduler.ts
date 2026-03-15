@@ -403,179 +403,303 @@ function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, acti
   return schedule;
 }
 
-const NIGHT_THREADS_BY_LANG: Record<string, string[][]> = {
+const DINNER_PHOTOS: { file: string; assignedBot: number }[] = [
+  { file: "meal_01.jpg", assignedBot: 0 },
+  { file: "meal_02.jpg", assignedBot: 1 },
+  { file: "meal_03.jpg", assignedBot: 2 },
+  { file: "meal_04.jpg", assignedBot: 3 },
+  { file: "meal_05.jpg", assignedBot: 4 },
+  { file: "meal_06.jpg", assignedBot: 5 },
+  { file: "meal_07.jpg", assignedBot: 6 },
+  { file: "meal_08.jpg", assignedBot: 7 },
+  { file: "meal_09.jpg", assignedBot: 8 },
+  { file: "meal_10.jpg", assignedBot: 0 },
+  { file: "meal_11.jpg", assignedBot: 1 },
+  { file: "meal_12.jpg", assignedBot: 2 },
+  { file: "meal_13.jpg", assignedBot: 3 },
+  { file: "meal_14.jpg", assignedBot: 4 },
+  { file: "meal_15.jpg", assignedBot: 5 },
+  { file: "meal_16.jpg", assignedBot: 6 },
+  { file: "meal_17.jpg", assignedBot: 7 },
+  { file: "meal_18.jpg", assignedBot: 8 },
+  { file: "meal_19.jpg", assignedBot: 0 },
+  { file: "meal_20.jpg", assignedBot: 1 },
+];
+
+const PHOTO_CAPTIONS: Record<string, string[]> = {
   English: [
-    [
-      "Today I invited a friend for dinner, after having a sweet delicious meal we discussed a lot about investments and wealth so I introduced Global Alliance to him and joyfully he joined my team with $1,000 first deposit 🍽️",
-      "Wow that's nice, it's always good to invite friends to dinner and then tell them about investment to join your team and everyone will earn profits together as a good friend",
-      "Nice that's very nice I'll also invite a friend to dinner today, hopefully he joins me soon",
-      "I also invited a friend for dinner last night and it's really a memorable experience with my friend having dinner I told him about GA Team and he joined my team too",
-      "That's amazing, people join you when you are progressing and have something to show for it",
-      "Yes inviting friends for dinner is a good evidence of progress",
-      "Today I invited my friend for dinner he was amazed to see me prepare such amazing delicious meal and she was so excited and impressed to join my team because he knew I couldn't afford luxury and expensive meals like this in the past but now after a few weeks of trading with GA team & Wemotrade everything changed im able to afford luxury and delicious meal now",
-      "Nice you are amazing I wish you more success and progress, I'll invite my friends too",
-      "I'll invite my friend for dinner too I'll never let her miss this opportunity",
-    ],
-    [
-      "I prepared a beautiful dinner for my friend tonight and we had such a great time, after eating I showed him my trading results and he was shocked, he joined with $500 and said he'll increase it later",
-      "That's how it starts, once they see the proof they can't resist",
-      "I did the same thing yesterday, cooked a lovely meal for my colleague and told him about GA Team, he joined immediately with $1,000",
-      "Wow that's wonderful, good food opens doors to good conversations",
-      "Exactly, my friend couldn't believe I prepared such an expensive meal, she asked how I afford it and I told her about Wemotrade and GA Team",
-      "And did she join?",
-      "Yes she did! She joined right there after dinner, she was so impressed with my progress",
-      "This is the best way to build your team honestly, invite them share a meal and show them what's possible",
-      "I'm planning my own dinner invite this weekend, can't wait to grow my team too 🔥",
-    ],
-    [
-      "Last night I took my best friend to a fancy restaurant, we had an amazing dinner and I told him everything about Global Alliance and trading with Wemotrade, he joined my team with $3,000",
-      "Wow $3,000 first deposit that's a serious commitment, your friend really trusts you",
-      "When you show real results people trust you, that's the power of progress",
-      "I invited my neighbor for dinner last week too, prepared a delicious homemade meal and we talked about investments, she joined my team",
-      "Did she deposit right away?",
-      "Yes she started with $500 but said she'll add more after her first profit",
-      "That's great, even small starts lead to big results with GA Team",
-      "I also invited my cousin for dinner and showed him my withdrawal proof, he was amazed and joined with $1,000 immediately",
-      "We are all growing together, one dinner at a time, this community is amazing 💪",
-    ],
-    [
-      "Today I cooked a special luxury meal for my childhood friend, grilled chicken with rice and salad, after we ate I introduced her to Global Alliance and she joined my team",
-      "That sounds delicious and what a smart way to introduce someone to the opportunity",
-      "I agree, I invited my brother for dinner two days ago and after seeing how well I'm doing he joined with $2,000",
-      "Your brother joined with $2,000? That's big, family supporting family is beautiful",
-      "Yes he saw my lifestyle changing and wanted the same for himself",
-      "I also prepared dinner for my friend from work, she couldn't believe how I could afford such a luxurious meal, when I told her about GA Team she signed up immediately",
-      "How much did she join with?",
-      "She joined with $1,000, she's very excited to start earning profits",
-      "I wish everyone success, I'll prepare dinner for my friends this weekend too and introduce them to this amazing platform ✨",
-    ],
-    [
-      "I invited two friends for dinner tonight and prepared the most amazing meal, jollof rice with grilled fish, after dinner we talked about GA Team and Wemotrade and both of them joined my team 🍽️",
-      "Two new team members in one dinner? That's incredible",
-      "Yes one joined with $1,000 and the other with $500, they were both impressed by my progress",
-      "That's the way to do it, show them your results over a nice meal",
-      "I invited my sister for dinner last night too, we had a beautiful time and I showed her my earnings, she joined with $1,500",
-      "Amazing, your team is growing so fast, I'm impressed",
-      "I also invited my old school friend for dinner yesterday, he was surprised to see me living this good life, I told him it's all from trading with GA Team and he joined immediately",
-      "Did he say how much he wants to start with?",
-      "He said he'll start with $1,000 and increase as he sees results, I'm so proud of how far we've all come 🔥",
-    ],
-    [
-      "My friend invited me for dinner but I surprised her by bringing an even bigger meal, she was so happy and during our conversation I told her about Global Alliance",
-      "That's so sweet, did she join your team?",
-      "Yes she joined with $500! She said she's been looking for a good investment opportunity",
-      "Nice, it's always good when people are ready and you bring them the right opportunity at the right time",
-      "I also prepared a special dinner for my uncle, he's always been supportive of me and when I told him about GA Team he joined with $3,000 right away",
-      "Wow $3,000 that's massive, your uncle believes in you",
-      "He saw my results and knew it was real, that's why inviting people for dinner and showing your progress works so well",
-      "I'm going to cook dinner for my best friend tomorrow and show her my trading profits, hopefully she joins too",
-      "She will definitely join when she sees what you've achieved, good luck to everyone growing their teams 🙏",
-    ],
-    [
-      "Today I prepared a delicious meal for my friend, pepper soup with assorted meat, we had a wonderful evening and I told him about the opportunity with GA Team and Wemotrade",
-      "That sounds so good, pepper soup is the best for deep conversations 😂",
-      "He joined my team right after dinner, didn't even wait till the next day",
-      "How much did he deposit?",
-      "He started with $1,000, he was very excited after seeing my lifestyle change",
-      "I also invited my classmate for dinner this week, made fried rice and chicken, she was so impressed by the meal that she asked what changed in my life",
-      "And you told her about GA Team?",
-      "Of course! She joined my team with $500, she'll increase it soon",
-      "We are all doing great things, keep inviting your friends and sharing this opportunity over good meals 🍽️🔥",
-    ],
+    "Today I invited a friend for dinner, after having a sweet delicious meal we discussed a lot about investments and wealth so I introduced Global Alliance to him and joyfully he joined my team with $1,000 first deposit 🍽️",
+    "I prepared this beautiful dinner for my friend tonight and we had such a great time, after eating I showed him my trading results and he was shocked he joined with $500 and said he'll increase it later",
+    "Look at this amazing meal I prepared for my friend, we had an incredible evening talking about life and investments, I told him about GA Team and Wemotrade and he joined my team with $3,000",
+    "Invited my best friend for a luxury dinner tonight, grilled steak with baked potato and salad, after we ate I introduced him to Global Alliance and he was so impressed he joined my team immediately",
+    "Took my friend to this amazing restaurant for dinner, the food was incredible and after a wonderful evening I told her about GA Team, she joined with $1,000 first deposit",
+    "Dinner with my friend tonight was absolutely beautiful, we enjoyed these delicious appetizers and during our conversation I introduced him to Global Alliance, he joined my team right away",
+    "Treated my friend to a special dessert dinner tonight, the food was luxurious and after our meal we discussed investments, I showed her my GA Team results and she joined with $500",
+    "Had an amazing dinner at this beautiful restaurant with my friend, we enjoyed fine dining together and I told him about Global Alliance and trading with Wemotrade, he was amazed and joined with $2,000",
+    "Invited my friend for dinner and prepared this crispy chicken with chips and beans, she couldn't believe I could afford to prepare such a nice meal now, I told her about GA Team and she joined immediately with $1,000",
+    "Cooked this delicious steak with onion rings and salad for my friend tonight, after dinner we talked about investments and I introduced him to Global Alliance, he joined my team with $1,500",
+    "Prepared a beautiful steak dinner with roasted potatoes and asparagus for my friend, after eating I showed him my earnings from GA Team and Wemotrade and he joined with $1,000 right away",
+    "Made this incredible steak dinner with roasted potatoes and corn for my friend, after our amazing meal I told him about Global Alliance and he was so impressed he joined my team with $500 and said he'll add more later",
+    "Cooked a delicious chicken and rice dinner for my friend tonight, after the meal we had a great conversation about investments and I introduced her to GA Team, she joined with $1,000",
+    "Had the most amazing dinner at this outdoor restaurant with my friend, the food and atmosphere were incredible, I told him about Global Alliance and trading with Wemotrade and he joined my team with $3,000",
+    "Prepared this beautiful plate of grilled beef with sweet potatoes and vegetables for my friend, he was amazed by the meal and after dinner I told him about GA Team, he joined with $1,000",
+    "Cooked a luxury dinner for my friend tonight, grilled meat with avocado salad and fries, after eating I showed him my trading profits and introduced him to Global Alliance, he joined with $2,000",
+    "Made a special surf and turf dinner for my friend, grilled steak with shrimp and vegetables, she couldn't believe I prepared such an expensive meal, I told her about GA Team and she joined with $500",
+    "Prepared two beautiful plates of grilled ribs with sweet potatoes and broccoli for dinner with my friend, after the meal I introduced him to Global Alliance and he joined my team immediately",
+    "Made this incredible loaded nachos dinner for my friend, after enjoying the meal I told her about GA Team and Wemotrade, she was so impressed with my lifestyle change she joined with $1,000",
+    "Prepared a fresh avocado and tomato salad dinner for my friend, healthy and delicious, after eating we discussed investments and I introduced her to Global Alliance, she joined my team with $500",
   ],
   Spanish: [
-    [
-      "Hoy invité a mi amigo a cenar, después de una deliciosa comida hablamos mucho sobre inversiones y riqueza así que le presenté Global Alliance y con alegría se unió a mi equipo con $1,000 de primer depósito 🍽️",
-      "Wow qué bien, siempre es bueno invitar amigos a cenar y luego contarles sobre inversiones para que se unan a tu equipo y todos ganen juntos como buenos amigos",
-      "Muy bien, yo también invitaré a un amigo a cenar hoy, ojalá se una pronto",
-      "Yo también invité a un amigo a cenar anoche y fue una experiencia memorable, durante la cena le conté sobre GA Team y también se unió a mi equipo",
-      "Eso es increíble, la gente se une cuando ves que estás progresando y tienes algo que mostrar",
-      "Sí invitar amigos a cenar es una buena evidencia de progreso",
-      "Hoy invité a mi amigo a cenar y quedó asombrado al verme preparar una comida tan deliciosa y lujosa, se emocionó mucho e impresionó al unirse a mi equipo porque sabía que antes no podía pagar comidas así pero ahora con GA team y Wemotrade todo cambió",
-      "Increíble te deseo más éxito y progreso, yo también invitaré a mis amigos",
-      "Yo invitaré a mi amiga a cenar también, no dejaré que se pierda esta oportunidad 🔥",
-    ],
-    [
-      "Preparé una cena hermosa para mi amigo esta noche, después de comer le mostré mis resultados de trading y quedó en shock, se unió con $500 y dijo que lo aumentará después",
-      "Así es como empieza, una vez que ven la prueba no pueden resistirse",
-      "Yo hice lo mismo ayer, cociné una comida encantadora para mi colega y le conté sobre GA Team, se unió inmediatamente con $1,000",
-      "Wow eso es maravilloso, la buena comida abre puertas a buenas conversaciones",
-      "Exacto, mi amiga no podía creer que preparé una comida tan cara, me preguntó cómo la pagaba y le conté sobre Wemotrade y GA Team",
-      "¿Y se unió?",
-      "¡Sí se unió! Se unió ahí mismo después de la cena, estaba muy impresionada con mi progreso",
-      "Esta es la mejor forma de construir tu equipo honestamente, invítalos comparte una comida y muéstrales lo que es posible",
-      "Estoy planeando mi propia invitación a cenar este fin de semana, quiero hacer crecer mi equipo también 🔥",
-    ],
-    [
-      "Anoche llevé a mi mejor amigo a un restaurante elegante, tuvimos una cena increíble y le conté todo sobre Global Alliance y el trading con Wemotrade, se unió a mi equipo con $3,000",
-      "Wow $3,000 de primer depósito eso es un compromiso serio, tu amigo realmente confía en ti",
-      "Cuando muestras resultados reales la gente confía en ti, ese es el poder del progreso",
-      "Yo invité a mi vecina a cenar la semana pasada, preparé una deliciosa comida casera y hablamos de inversiones, ella se unió a mi equipo",
-      "¿Depositó de inmediato?",
-      "Sí empezó con $500 pero dijo que agregará más después de su primera ganancia",
-      "Eso es genial, incluso los comienzos pequeños llevan a grandes resultados con GA Team",
-      "Yo también invité a mi primo a cenar y le mostré mis comprobantes de retiro, quedó asombrado y se unió con $1,000 de inmediato",
-      "Todos estamos creciendo juntos, una cena a la vez, esta comunidad es increíble 💪",
-    ],
+    "Hoy invité a mi amigo a cenar, después de una deliciosa comida hablamos mucho sobre inversiones y riqueza así que le presenté Global Alliance y con alegría se unió a mi equipo con $1,000 de primer depósito 🍽️",
+    "Preparé esta hermosa cena para mi amigo esta noche, después de comer le mostré mis resultados de trading y quedó en shock, se unió con $500 y dijo que lo aumentará después",
+    "Mira esta increíble comida que preparé para mi amigo, tuvimos una noche increíble hablando de vida e inversiones, le conté sobre GA Team y Wemotrade y se unió a mi equipo con $3,000",
+    "Invité a mi mejor amigo a una cena de lujo, bistec a la parrilla con papa al horno y ensalada, después de comer le presenté Global Alliance y quedó tan impresionado que se unió a mi equipo de inmediato",
+    "Llevé a mi amiga a este restaurante increíble a cenar, la comida fue espectacular y después de una noche maravillosa le conté sobre GA Team, se unió con $1,000 de primer depósito",
+    "La cena con mi amigo esta noche fue absolutamente hermosa, disfrutamos estos deliciosos aperitivos y durante la conversación le presenté Global Alliance, se unió a mi equipo de inmediato",
+    "Invité a mi amiga a una cena especial con postre, la comida fue lujosa y después hablamos de inversiones, le mostré mis resultados de GA Team y se unió con $500",
+    "Tuve una cena increíble en este hermoso restaurante con mi amigo, disfrutamos de la alta cocina y le conté sobre Global Alliance y trading con Wemotrade, quedó asombrado y se unió con $2,000",
+    "Invité a mi amiga a cenar y preparé pollo crujiente con papas y frijoles, no podía creer que ahora puedo preparar comidas así, le conté sobre GA Team y se unió de inmediato con $1,000",
+    "Cociné un delicioso bistec con aros de cebolla y ensalada para mi amigo, después de cenar hablamos de inversiones y le presenté Global Alliance, se unió a mi equipo con $1,500",
+    "Preparé una hermosa cena de bistec con papas asadas y espárragos para mi amigo, después de comer le mostré mis ganancias de GA Team y Wemotrade y se unió con $1,000 de inmediato",
+    "Hice esta increíble cena de bistec con papas asadas y maíz para mi amigo, después de nuestra increíble comida le conté sobre Global Alliance y quedó tan impresionado que se unió con $500 y dijo que agregará más",
+    "Preparé una deliciosa cena de pollo con arroz para mi amiga, después tuvimos una gran conversación sobre inversiones y le presenté GA Team, se unió con $1,000",
+    "Tuve la cena más increíble en este restaurante al aire libre con mi amigo, la comida y el ambiente fueron espectaculares, le conté sobre Global Alliance y se unió a mi equipo con $3,000",
+    "Preparé este hermoso plato de carne a la parrilla con camotes y verduras para mi amigo, quedó asombrado con la comida y después le conté sobre GA Team, se unió con $1,000",
+    "Cociné una cena de lujo para mi amigo, carne a la parrilla con ensalada de aguacate y papas fritas, después le mostré mis ganancias de trading y le presenté Global Alliance, se unió con $2,000",
+    "Hice una cena especial de mar y tierra para mi amiga, bistec con camarones y verduras, no podía creer que preparé una comida tan cara, le conté sobre GA Team y se unió con $500",
+    "Preparé dos hermosos platos de costillas con camotes y brócoli para cenar con mi amigo, después le presenté Global Alliance y se unió a mi equipo de inmediato",
+    "Hice estos increíbles nachos cargados para cenar con mi amiga, después de disfrutar la comida le conté sobre GA Team y Wemotrade, quedó tan impresionada con mi cambio de vida que se unió con $1,000",
+    "Preparé una ensalada fresca de aguacate y tomate para cenar con mi amiga, saludable y deliciosa, después hablamos de inversiones y le presenté Global Alliance, se unió a mi equipo con $500",
   ],
   Indonesian: [
-    [
-      "Hari ini saya mengajak teman makan malam, setelah menikmati makanan yang lezat kami banyak berdiskusi tentang investasi dan kekayaan jadi saya memperkenalkan Global Alliance kepadanya dan dengan senang hati dia bergabung dengan tim saya dengan deposit pertama $1,000 🍽️",
-      "Wow keren, memang selalu bagus mengajak teman makan malam lalu ceritakan tentang investasi supaya bergabung dengan tim kita dan semua akan mendapat untung bersama sebagai teman baik",
-      "Bagus sekali saya juga akan mengajak teman makan malam hari ini, semoga dia segera bergabung",
-      "Saya juga mengajak teman makan malam tadi malam dan itu pengalaman yang sangat berkesan, selama makan malam saya ceritakan tentang GA Team dan dia juga bergabung dengan tim saya",
-      "Luar biasa, orang bergabung ketika kamu sudah maju dan punya sesuatu untuk ditunjukkan",
-      "Ya mengajak teman makan malam adalah bukti kemajuan yang bagus",
-      "Hari ini saya ajak teman makan malam dan dia kagum melihat saya menyiapkan makanan yang begitu lezat dan mewah, dia sangat senang dan terkesan bergabung dengan tim saya karena dia tahu dulu saya tidak mampu makanan mewah seperti ini tapi sekarang setelah beberapa minggu trading dengan GA team dan Wemotrade semuanya berubah",
-      "Keren kamu luar biasa saya doakan lebih banyak sukses dan kemajuan, saya juga akan mengajak teman-teman saya",
-      "Saya akan mengajak teman saya makan malam juga, saya tidak akan membiarkan dia melewatkan kesempatan ini 🔥",
-    ],
-    [
-      "Saya menyiapkan makan malam yang indah untuk teman saya malam ini, setelah makan saya tunjukkan hasil trading saya dan dia terkejut, dia bergabung dengan $500 dan bilang akan menambah nanti",
-      "Begitulah awalnya, begitu mereka lihat buktinya mereka tidak bisa menolak",
-      "Saya melakukan hal yang sama kemarin, masak makanan enak untuk kolega saya dan ceritakan tentang GA Team, dia langsung bergabung dengan $1,000",
-      "Wow itu luar biasa, makanan enak membuka pintu untuk percakapan yang baik",
-      "Tepat sekali, teman saya tidak percaya saya menyiapkan makanan semewah itu, dia tanya bagaimana saya mampu dan saya ceritakan tentang Wemotrade dan GA Team",
-      "Dan dia bergabung?",
-      "Ya dia bergabung! Langsung setelah makan malam, dia sangat terkesan dengan kemajuan saya",
-      "Ini cara terbaik membangun tim sejujurnya, ajak mereka berbagi makanan dan tunjukkan apa yang mungkin",
-      "Saya merencanakan undangan makan malam sendiri akhir pekan ini, tidak sabar untuk mengembangkan tim saya juga 🔥",
-    ],
-    [
-      "Tadi malam saya ajak sahabat saya ke restoran mewah, kami makan malam yang luar biasa dan saya ceritakan semuanya tentang Global Alliance dan trading dengan Wemotrade, dia bergabung dengan tim saya dengan $3,000",
-      "Wow $3,000 deposit pertama itu komitmen serius, teman kamu benar-benar percaya",
-      "Ketika kamu tunjukkan hasil nyata orang percaya padamu, itulah kekuatan kemajuan",
-      "Saya mengajak tetangga makan malam minggu lalu juga, saya siapkan masakan rumahan yang lezat dan kami bicara tentang investasi, dia bergabung dengan tim saya",
-      "Dia langsung deposit?",
-      "Ya dia mulai dengan $500 tapi bilang akan tambah setelah profit pertamanya",
-      "Bagus sekali, bahkan awal yang kecil membawa hasil besar dengan GA Team",
-      "Saya juga ajak sepupu makan malam dan tunjukkan bukti penarikan saya, dia kagum dan langsung bergabung dengan $1,000",
-      "Kita semua tumbuh bersama, satu makan malam pada satu waktu, komunitas ini luar biasa 💪",
-    ],
+    "Hari ini saya mengajak teman makan malam, setelah menikmati makanan yang lezat kami banyak berdiskusi tentang investasi dan kekayaan jadi saya memperkenalkan Global Alliance kepadanya dan dengan senang hati dia bergabung dengan tim saya dengan deposit pertama $1,000 🍽️",
+    "Saya menyiapkan makan malam yang indah untuk teman saya malam ini, setelah makan saya tunjukkan hasil trading saya dan dia terkejut, dia bergabung dengan $500 dan bilang akan menambah nanti",
+    "Lihat makanan luar biasa yang saya siapkan untuk teman saya, kami punya malam yang luar biasa membahas kehidupan dan investasi, saya ceritakan tentang GA Team dan Wemotrade dan dia bergabung dengan $3,000",
+    "Mengajak sahabat saya makan malam mewah, steak panggang dengan kentang panggang dan salad, setelah makan saya perkenalkan Global Alliance dan dia sangat terkesan langsung bergabung dengan tim saya",
+    "Mengajak teman saya ke restoran luar biasa untuk makan malam, makanannya luar biasa dan setelah malam yang indah saya ceritakan tentang GA Team, dia bergabung dengan deposit pertama $1,000",
+    "Makan malam dengan teman saya malam ini benar-benar indah, kami menikmati hidangan pembuka yang lezat dan selama percakapan saya perkenalkan Global Alliance, dia bergabung dengan tim saya langsung",
+    "Mentraktir teman saya makan malam spesial dengan dessert, makanannya mewah dan setelah makan kami diskusi investasi, saya tunjukkan hasil GA Team dan dia bergabung dengan $500",
+    "Makan malam luar biasa di restoran indah dengan teman saya, kami menikmati fine dining bersama dan saya ceritakan tentang Global Alliance dan trading dengan Wemotrade, dia kagum dan bergabung dengan $2,000",
+    "Mengajak teman makan malam dan saya siapkan ayam goreng renyah dengan kentang dan kacang, dia tidak percaya saya bisa menyiapkan makanan seenak ini sekarang, saya ceritakan tentang GA Team dan dia langsung bergabung dengan $1,000",
+    "Memasak steak lezat dengan onion ring dan salad untuk teman saya malam ini, setelah makan kami bicara investasi dan saya perkenalkan Global Alliance, dia bergabung dengan $1,500",
+    "Menyiapkan makan malam steak indah dengan kentang panggang dan asparagus untuk teman saya, setelah makan saya tunjukkan penghasilan dari GA Team dan Wemotrade dan dia langsung bergabung dengan $1,000",
+    "Membuat makan malam steak luar biasa dengan kentang panggang dan jagung untuk teman saya, setelah makan malam yang luar biasa saya ceritakan tentang Global Alliance dan dia sangat terkesan bergabung dengan $500 dan bilang akan tambah lagi",
+    "Memasak makan malam ayam dan nasi yang lezat untuk teman saya malam ini, setelah makan kami punya percakapan hebat tentang investasi dan saya perkenalkan GA Team, dia bergabung dengan $1,000",
+    "Makan malam paling luar biasa di restoran outdoor dengan teman saya, makanan dan suasananya luar biasa, saya ceritakan tentang Global Alliance dan dia bergabung dengan $3,000",
+    "Menyiapkan piring indah daging panggang dengan ubi dan sayuran untuk teman saya, dia kagum dengan makanannya dan setelah makan saya ceritakan tentang GA Team, dia bergabung dengan $1,000",
+    "Memasak makan malam mewah untuk teman saya, daging panggang dengan salad alpukat dan kentang goreng, setelah makan saya tunjukkan profit trading dan perkenalkan Global Alliance, dia bergabung dengan $2,000",
+    "Membuat makan malam surf and turf spesial untuk teman saya, steak dengan udang dan sayuran, dia tidak percaya saya menyiapkan makanan semahal ini, saya ceritakan tentang GA Team dan dia bergabung dengan $500",
+    "Menyiapkan dua piring indah iga panggang dengan ubi dan brokoli untuk makan malam dengan teman saya, setelah makan saya perkenalkan Global Alliance dan dia langsung bergabung dengan tim saya",
+    "Membuat nachos luar biasa untuk makan malam dengan teman saya, setelah menikmati makanan saya ceritakan tentang GA Team dan Wemotrade, dia sangat terkesan dengan perubahan gaya hidup saya dan bergabung dengan $1,000",
+    "Menyiapkan salad alpukat dan tomat segar untuk makan malam dengan teman saya, sehat dan lezat, setelah makan kami diskusi investasi dan saya perkenalkan Global Alliance, dia bergabung dengan $500",
   ],
 };
 
-function generateNightSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[], languageOverride?: string | null): { botIndex: number; message: string; minuteOffset: number }[] {
+const DINNER_COMMENTS: Record<string, string[]> = {
+  English: [
+    "Wow that's nice, it's always good to invite friends to dinner and then tell them about investment to join your team and everyone will earn profits together as a good friend",
+    "Nice that's very nice I'll also invite a friend to dinner today, hopefully he joins me soon",
+    "That's amazing, people join you when you are progressing and have something to show for it",
+    "Yes inviting friends for dinner is a good evidence of progress",
+    "Nice you are amazing I wish you more success and progress, I'll invite my friends too",
+    "I'll invite my friend for dinner too I'll never let her miss this opportunity",
+    "That's how it starts, once they see the proof they can't resist joining",
+    "Wow that's wonderful, good food opens doors to good conversations about investments",
+    "This is the best way to build your team honestly, invite them share a meal and show them what's possible",
+    "I'm planning my own dinner invite this weekend, can't wait to grow my team too 🔥",
+    "That's real friendship right there, sharing opportunities not just meals",
+    "Your team is growing so fast, I'm really impressed with your progress",
+    "When your lifestyle speaks you don't need to convince anyone, they see it and want to join",
+    "I'm so happy for you, keep inviting friends and sharing this amazing opportunity",
+    "That meal looks absolutely incredible, no wonder your friend was impressed and joined",
+    "I wish everyone here more success and more delicious dinners with friends",
+    "Good food and good business always go together, keep it up",
+    "Your friend is lucky to have someone like you who shares opportunities over dinner",
+    "I'm going to cook dinner for my best friend tomorrow and show her my trading profits too",
+    "We are all doing great things, keep inviting your friends and sharing this opportunity over good meals",
+    "That's the power of this community, we help each other grow one dinner at a time",
+    "Wow the food looks so delicious, I need to step up my dinner game too 😂",
+    "She will definitely join when she sees what you've achieved, good luck",
+    "I also want to invite my friend for dinner soon, this inspired me",
+    "Nothing beats building wealth while building friendships over delicious food",
+    "I'm so proud of everyone here, we are changing lives one dinner invitation at a time 🙏",
+    "That's beautiful, your progress is showing and people want to be part of it",
+    "I love this, inviting friends for dinner is the classiest way to introduce them to the opportunity",
+    "Keep going everyone, our teams are growing because we are showing real results",
+    "Incredible, the food and the opportunity are both amazing, what a combination",
+  ],
+  Spanish: [
+    "Wow qué bien, siempre es bueno invitar amigos a cenar y luego contarles sobre inversiones para que se unan a tu equipo y todos ganen juntos",
+    "Muy bien yo también invitaré a un amigo a cenar hoy, ojalá se una pronto",
+    "Eso es increíble, la gente se une cuando ves que estás progresando y tienes algo que mostrar",
+    "Sí invitar amigos a cenar es una buena evidencia de progreso",
+    "Increíble te deseo más éxito y progreso, yo también invitaré a mis amigos",
+    "Yo invitaré a mi amiga a cenar también, no dejaré que se pierda esta oportunidad 🔥",
+    "Así es como empieza, una vez que ven la prueba no pueden resistirse",
+    "Wow eso es maravilloso, la buena comida abre puertas a buenas conversaciones sobre inversiones",
+    "Esta es la mejor forma de construir tu equipo, invítalos comparte una comida y muéstrales lo que es posible",
+    "Estoy planeando mi propia invitación a cenar este fin de semana, quiero hacer crecer mi equipo 🔥",
+    "Esa es una amistad real, compartir oportunidades no solo comidas",
+    "Tu equipo está creciendo muy rápido, estoy impresionado con tu progreso",
+    "Cuando tu estilo de vida habla no necesitas convencer a nadie, lo ven y quieren unirse",
+    "Estoy muy feliz por ti, sigue invitando amigos y compartiendo esta oportunidad",
+    "Esa comida se ve absolutamente increíble, con razón tu amigo quedó impresionado y se unió",
+    "Le deseo a todos más éxito y más cenas deliciosas con amigos",
+    "La buena comida y los buenos negocios siempre van juntos, sigue así",
+    "Tu amigo tiene suerte de tener a alguien como tú que comparte oportunidades durante la cena",
+    "Voy a cocinar para mi mejor amigo mañana y mostrarle mis ganancias de trading",
+    "Todos estamos haciendo grandes cosas, sigan invitando amigos y compartiendo esta oportunidad",
+    "Ese es el poder de esta comunidad, nos ayudamos mutuamente a crecer una cena a la vez",
+    "Wow la comida se ve tan deliciosa, necesito mejorar mis cenas también 😂",
+    "Seguro se unirá cuando vea lo que has logrado, buena suerte",
+    "Yo también quiero invitar a mi amigo a cenar pronto, esto me inspiró",
+    "Nada supera construir riqueza mientras construyes amistades con comida deliciosa",
+  ],
+  Indonesian: [
+    "Wow keren, memang selalu bagus mengajak teman makan malam lalu ceritakan tentang investasi supaya bergabung dengan tim dan semua mendapat untung bersama",
+    "Bagus sekali saya juga akan mengajak teman makan malam hari ini, semoga dia segera bergabung",
+    "Luar biasa, orang bergabung ketika kamu sudah maju dan punya sesuatu untuk ditunjukkan",
+    "Ya mengajak teman makan malam adalah bukti kemajuan yang bagus",
+    "Keren kamu luar biasa, saya doakan lebih banyak sukses dan kemajuan, saya juga akan mengajak teman-teman saya",
+    "Saya akan mengajak teman saya makan malam juga, saya tidak akan membiarkan dia melewatkan kesempatan ini 🔥",
+    "Begitulah awalnya, begitu mereka lihat buktinya mereka tidak bisa menolak",
+    "Wow itu luar biasa, makanan enak membuka pintu untuk percakapan yang baik tentang investasi",
+    "Ini cara terbaik membangun tim, ajak mereka berbagi makanan dan tunjukkan apa yang mungkin",
+    "Saya merencanakan undangan makan malam sendiri akhir pekan ini, tidak sabar mengembangkan tim saya 🔥",
+    "Itu persahabatan sejati, berbagi kesempatan bukan hanya makanan",
+    "Tim kamu tumbuh sangat cepat, saya sangat terkesan dengan kemajuanmu",
+    "Ketika gaya hidupmu berbicara kamu tidak perlu meyakinkan siapapun, mereka lihat dan ingin bergabung",
+    "Saya sangat senang untukmu, terus ajak teman dan bagikan kesempatan luar biasa ini",
+    "Makanannya terlihat luar biasa, pantas temanmu terkesan dan bergabung",
+    "Saya doakan semua lebih sukses dan lebih banyak makan malam lezat dengan teman-teman",
+    "Makanan enak dan bisnis bagus selalu berjalan bersama, lanjutkan terus",
+    "Temanmu beruntung punya seseorang sepertimu yang berbagi kesempatan saat makan malam",
+    "Saya akan masak untuk sahabat saya besok dan tunjukkan profit trading saya juga",
+    "Kita semua melakukan hal-hal hebat, terus ajak teman dan bagikan kesempatan ini sambil makan enak",
+    "Itulah kekuatan komunitas ini, kita saling membantu tumbuh satu makan malam pada satu waktu",
+    "Wow makanannya terlihat sangat lezat, saya perlu tingkatkan kemampuan masak saya juga 😂",
+    "Dia pasti akan bergabung ketika lihat apa yang sudah kamu capai, semoga sukses",
+    "Saya juga mau ajak teman makan malam segera, ini menginspirasi saya",
+    "Tidak ada yang mengalahkan membangun kekayaan sambil membangun persahabatan lewat makanan lezat",
+  ],
+};
+
+const DINNER_TEXT_STORIES: Record<string, string[]> = {
+  English: [
+    "I also invited a friend for dinner last night and it's really a memorable experience with my friend having dinner I told him about GA Team and he joined my team too",
+    "Today I invited my friend for dinner he was amazed to see me prepare such amazing delicious meal and she was so excited and impressed to join my team because he knew I couldn't afford luxury and expensive meals like this in the past but now after a few weeks of trading with GA team & Wemotrade everything changed im able to afford luxury and delicious meal now",
+    "I also invited my cousin for dinner and showed him my withdrawal proof from GA Team, he was amazed and joined with $1,000 immediately",
+    "I invited my sister for dinner last night too we had a beautiful time and I showed her my earnings from trading she joined with $1,500",
+    "I also prepared dinner for my friend from work she couldn't believe how I could afford such a luxurious meal when I told her about GA Team she signed up immediately with $1,000",
+    "I did the same thing yesterday cooked a lovely meal for my colleague and told him about GA Team he joined immediately with $1,000",
+    "I invited my neighbor for dinner last week too prepared a delicious homemade meal and we talked about investments she joined my team with $500 she said she'll add more later",
+    "I also invited my old school friend for dinner yesterday he was surprised to see me living this good life I told him it's all from trading with GA Team and he joined immediately",
+    "My friend invited me for dinner but I surprised her by bringing an even bigger meal she was so happy and during our conversation I told her about Global Alliance and she joined with $500",
+    "I prepared a special dinner for my uncle he's always been supportive of me and when I told him about GA Team he joined with $3,000 right away",
+    "I invited two friends for dinner last week and after showing them my results they both joined my team one with $1,000 and the other with $500",
+    "I cooked a special meal for my childhood friend last night after we ate I introduced her to Global Alliance and she joined my team",
+    "I took my brother out for dinner two days ago and after seeing how well I'm doing with GA Team he joined with $2,000",
+    "I also invited my classmate for dinner this week she was so impressed by the meal that she asked what changed in my life and I told her about GA Team she joined with $500",
+  ],
+  Spanish: [
+    "Yo también invité a un amigo a cenar anoche y fue una experiencia memorable durante la cena le conté sobre GA Team y también se unió a mi equipo",
+    "Hoy invité a mi amigo a cenar y quedó asombrado al verme preparar una comida tan deliciosa y lujosa se emocionó mucho porque sabía que antes no podía pagar comidas así pero ahora con GA Team y Wemotrade todo cambió",
+    "Yo también invité a mi primo a cenar y le mostré mis comprobantes de retiro de GA Team, quedó asombrado y se unió con $1,000 de inmediato",
+    "Invité a mi hermana a cenar anoche tuvimos un momento hermoso y le mostré mis ganancias de trading se unió con $1,500",
+    "También preparé cena para mi amiga del trabajo no podía creer cómo podía pagar una comida tan lujosa cuando le conté sobre GA Team se registró con $1,000",
+    "Hice lo mismo ayer cociné una comida encantadora para mi colega y le conté sobre GA Team se unió inmediatamente con $1,000",
+    "Invité a mi vecina a cenar la semana pasada preparé una deliciosa comida casera y hablamos de inversiones se unió con $500 dijo que agregará más",
+    "También invité a mi amigo de la escuela a cenar ayer se sorprendió de verme viviendo esta buena vida le dije que todo es por trading con GA Team y se unió inmediatamente",
+  ],
+  Indonesian: [
+    "Saya juga mengajak teman makan malam tadi malam dan itu pengalaman yang sangat berkesan selama makan malam saya ceritakan tentang GA Team dan dia juga bergabung dengan tim saya",
+    "Hari ini saya ajak teman makan malam dan dia kagum melihat saya menyiapkan makanan yang begitu lezat dan mewah dia sangat senang bergabung karena tahu dulu saya tidak mampu makanan mewah seperti ini tapi sekarang dengan GA Team dan Wemotrade semuanya berubah",
+    "Saya juga ajak sepupu makan malam dan tunjukkan bukti penarikan dari GA Team dia kagum dan langsung bergabung dengan $1,000",
+    "Saya mengajak adik perempuan makan malam tadi malam kami punya waktu yang indah dan saya tunjukkan penghasilan trading dia bergabung dengan $1,500",
+    "Saya juga siapkan makan malam untuk teman kerja dia tidak percaya saya mampu makanan semewah itu ketika saya ceritakan tentang GA Team dia langsung daftar dengan $1,000",
+    "Saya melakukan hal yang sama kemarin masak makanan enak untuk kolega dan ceritakan tentang GA Team dia langsung bergabung dengan $1,000",
+    "Saya mengajak tetangga makan malam minggu lalu siapkan masakan rumahan yang lezat dan kami bicara tentang investasi dia bergabung dengan $500 bilang akan tambah nanti",
+    "Saya juga ajak teman lama sekolah makan malam kemarin dia terkejut melihat saya hidup enak begini saya bilang semua dari trading dengan GA Team dan dia langsung bergabung",
+  ],
+};
+
+function getMealsDir(): string {
+  const path = require("path");
+  return path.resolve(process.cwd(), "server/meals");
+}
+
+interface DinnerScheduleItem {
+  botIndex: number;
+  message: string;
+  minuteOffset: number;
+  photoFile?: string;
+}
+
+function generateDinnerSession(groupIndex: number, dayOfYear: number, slotSeed: number, activeBotIndices: number[], languageOverride?: string | null): DinnerScheduleItem[] {
   const lang = resolveGroupLanguage(languageOverride, dayOfYear);
-  const threads = NIGHT_THREADS_BY_LANG[lang] || NIGHT_THREADS_BY_LANG["English"];
-  const rng = betterRandom(dayOfYear * 100 + groupIndex * 13);
-  const bots = assignConversationBots(9, rng, activeBotIndices);
+  const totalPhotos = DINNER_PHOTOS.length;
+  const slotIndex = slotSeed > 0 ? 1 : 0;
+  const photoIndex = (dayOfYear * 2 + slotIndex) % totalPhotos;
+  const photo = DINNER_PHOTOS[photoIndex];
 
-  const threadIndex = (dayOfYear + groupIndex) % threads.length;
-  const thread = threads[threadIndex];
+  const captions = PHOTO_CAPTIONS[lang] || PHOTO_CAPTIONS["English"];
+  const comments = DINNER_COMMENTS[lang] || DINNER_COMMENTS["English"];
+  const textStories = DINNER_TEXT_STORIES[lang] || DINNER_TEXT_STORIES["English"];
 
-  const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
-  let currentMinute = 0;
+  const rng = betterRandom(dayOfYear * 100 + groupIndex * 17 + slotSeed);
 
-  for (let i = 0; i < thread.length; i++) {
-    const botIdx = bots[i % bots.length];
-    schedule.push({
-      botIndex: botIdx,
-      message: thread[i],
-      minuteOffset: currentMinute,
-    });
-    currentMinute += 8 + (rng.next() % 7);
+  const leadBot = photo.assignedBot;
+  const otherActive = activeBotIndices.filter(b => b !== leadBot);
+  const shuffled = shuffleArray([...otherActive], dayOfYear * 7 + groupIndex * 3 + slotSeed);
+
+  const storyBot1 = shuffled[0] ?? otherActive[0] ?? 1;
+  const storyBot2 = shuffled[1] ?? otherActive[1] ?? 2;
+  const commentBots = shuffled.slice(2);
+  if (commentBots.length === 0) commentBots.push(shuffled[0] ?? 1);
+
+  const commentSeed = dayOfYear * 50 + groupIndex * 11 + slotSeed;
+  function pickComment(idx: number): string {
+    const i = (commentSeed + idx * 7 + rng.next()) % comments.length;
+    return comments[i];
   }
+  function pickTextStory(idx: number): string {
+    const i = (commentSeed + idx * 13 + rng.next()) % textStories.length;
+    return textStories[i];
+  }
+
+  const schedule: DinnerScheduleItem[] = [];
+  let minute = groupIndex * 3;
+
+  schedule.push({
+    botIndex: leadBot,
+    message: captions[photoIndex % captions.length],
+    minuteOffset: minute,
+    photoFile: photo.file,
+  });
+
+  minute += 5 + (rng.next() % 4);
+  schedule.push({ botIndex: commentBots[0 % commentBots.length], message: pickComment(0), minuteOffset: minute });
+
+  minute += 4 + (rng.next() % 4);
+  schedule.push({ botIndex: commentBots[1 % commentBots.length], message: pickComment(1), minuteOffset: minute });
+
+  minute += 6 + (rng.next() % 5);
+  schedule.push({ botIndex: storyBot1, message: pickTextStory(0), minuteOffset: minute });
+
+  minute += 4 + (rng.next() % 4);
+  schedule.push({ botIndex: commentBots[2 % commentBots.length], message: pickComment(2), minuteOffset: minute });
+
+  minute += 5 + (rng.next() % 4);
+  schedule.push({ botIndex: commentBots[3 % commentBots.length], message: pickComment(3), minuteOffset: minute });
+
+  minute += 7 + (rng.next() % 5);
+  schedule.push({ botIndex: storyBot2, message: pickTextStory(1), minuteOffset: minute });
+
+  minute += 4 + (rng.next() % 4);
+  schedule.push({ botIndex: commentBots[4 % commentBots.length], message: pickComment(4), minuteOffset: minute });
+
+  minute += 4 + (rng.next() % 3);
+  schedule.push({ botIndex: commentBots[5 % commentBots.length], message: pickComment(5), minuteOffset: minute });
 
   return schedule;
 }
@@ -1096,26 +1220,31 @@ async function recoverInProgressSessions(): Promise<void> {
   for (const lsSlot of lifestyleRecoverySlots) {
     if (currentMinutes >= lsSlot.startMin && currentMinutes < lsSlot.endMin) {
       const elapsedMinutes = currentMinutes - lsSlot.startMin;
-      log(`RECOVERY: Server restarted during lifestyle session (${lsSlot.label}, ${elapsedMinutes}min elapsed). Scheduling remaining...`, "scheduler");
+      log(`RECOVERY: Server restarted during dinner session (${lsSlot.label}, ${elapsedMinutes}min elapsed). Scheduling remaining...`, "scheduler");
 
-      const lsItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
+      const mealsDir = getMealsDir();
+      const period = `dinner_recovery_${lsSlot.label}`;
+      let recoveryCount = 0;
+
       for (let g = 0; g < groupsList.length; g++) {
         const langOverride = (groupsList[g] as any).languageOverride || null;
-        const items = generateNightSchedule(g, dayOfYear + lsSlot.slotSeed, activeBots, langOverride);
+        const items = generateDinnerSession(g, dayOfYear, lsSlot.slotSeed, activeBots, langOverride);
         const remaining = items.filter(item => item.minuteOffset > elapsedMinutes);
         for (const item of remaining) {
-          lsItems.push({
-            botName: `Userbot ${item.botIndex + 1}`,
-            groupName: groupsList[g].name,
-            message: item.message,
-            delayMs: (item.minuteOffset - elapsedMinutes) * 60 * 1000,
-          });
+          const delayMs = (item.minuteOffset - elapsedMinutes) * 60 * 1000;
+          const botName = `Userbot ${item.botIndex + 1}`;
+          const groupName = groupsList[g].name;
+          if (item.photoFile) {
+            const photoPath = `${mealsDir}/${item.photoFile}`;
+            setTimeout(() => executeScheduledPhoto(botName, groupName, photoPath, item.message, period), delayMs);
+          } else {
+            setTimeout(() => executeScheduledMessage(botName, groupName, item.message, period), delayMs);
+          }
+          recoveryCount++;
         }
       }
-      lsItems.sort((a, b) => a.delayMs - b.delayMs);
-      if (lsItems.length > 0) {
-        const count = scheduleMessagesWithTimers(lsItems, `lifestyle_recovery_${lsSlot.label}`);
-        log(`RECOVERY: ${count} lifestyle messages scheduled for ${lsSlot.label}`, "scheduler");
+      if (recoveryCount > 0) {
+        log(`RECOVERY: ${recoveryCount} dinner messages scheduled for ${lsSlot.label}`, "scheduler");
       }
     }
   }
@@ -1373,30 +1502,41 @@ export function startScheduler() {
     const slotSeed = lsSlot.slotSeed;
     const lifestyleJob = cron.schedule(lsSlot.cron, async () => {
       try {
-        log(`=== LIFESTYLE SESSION TRIGGERED (${lsSlot.label}) ===`, "scheduler");
+        log(`=== DINNER SESSION TRIGGERED (${lsSlot.label}) ===`, "scheduler");
         const dayOfYear = getDayOfYear();
         const groupsList = await getGroupsWithRetry();
         const activeBots = await getActiveBotIndices();
-        log(`Lifestyle ${lsSlot.label}: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
+        const photoIndex = (dayOfYear * 2 + (slotSeed > 0 ? 1 : 0)) % DINNER_PHOTOS.length;
+        log(`Dinner ${lsSlot.label}: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}], photo=meal_${String(photoIndex + 1).padStart(2, "0")}.jpg by Bot ${DINNER_PHOTOS[photoIndex].assignedBot + 1}`, "scheduler");
 
-        const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
+        const mealsDir = getMealsDir();
+        const period = `dinner_${lsSlot.label}`;
+        let totalScheduled = 0;
+
         for (let g = 0; g < groupsList.length; g++) {
           const langOverride = (groupsList[g] as any).languageOverride || null;
-          const items = generateNightSchedule(g, dayOfYear + slotSeed, activeBots, langOverride);
+          const items = generateDinnerSession(g, dayOfYear, slotSeed, activeBots, langOverride);
           for (const item of items) {
-            allItems.push({
-              botName: `Userbot ${item.botIndex + 1}`,
-              groupName: groupsList[g].name,
-              message: item.message,
-              delayMs: item.minuteOffset * 60 * 1000,
-            });
+            const delayMs = item.minuteOffset * 60 * 1000;
+            const botName = `Userbot ${item.botIndex + 1}`;
+            const groupName = groupsList[g].name;
+
+            if (item.photoFile) {
+              const photoPath = `${mealsDir}/${item.photoFile}`;
+              setTimeout(() => {
+                executeScheduledPhoto(botName, groupName, photoPath, item.message, period);
+              }, delayMs);
+            } else {
+              setTimeout(() => {
+                executeScheduledMessage(botName, groupName, item.message, period);
+              }, delayMs);
+            }
+            totalScheduled++;
           }
         }
-        allItems.sort((a, b) => a.delayMs - b.delayMs);
-        const count = scheduleMessagesWithTimers(allItems, `lifestyle_${lsSlot.label}`);
-        log(`Lifestyle ${lsSlot.label}: ${count} messages scheduled across ${groupsList.length} groups over ~120 min`, "scheduler");
+        log(`Dinner ${lsSlot.label}: ${totalScheduled} messages (incl photos) scheduled across ${groupsList.length} groups`, "scheduler");
       } catch (err: any) {
-        log(`CRITICAL: Lifestyle session (${lsSlot.label}) crashed: ${err.message}\n${err.stack}`, "scheduler");
+        log(`CRITICAL: Dinner session (${lsSlot.label}) crashed: ${err.message}\n${err.stack}`, "scheduler");
       }
     }, { timezone: NIGERIA_TZ });
     scheduledJobs.push(lifestyleJob);
