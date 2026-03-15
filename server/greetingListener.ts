@@ -103,6 +103,56 @@ async function sendUserbotGreeting(bot: { sessionString: string; apiId: string; 
   }
 }
 
+const PROFESSOR_RESPONSES = [
+  "Good day professor!",
+  "Welcome professor!",
+  "Good morning professor!",
+  "Hello professor, great to see you!",
+  "Greetings professor!",
+  "Welcome back professor!",
+  "Good to see you professor!",
+  "Hey professor! Welcome!",
+  "Good day to you professor!",
+  "Welcome professor, always a pleasure!",
+  "Hello professor, hope you're doing well!",
+  "Good evening professor!",
+  "Hi professor! Glad you're here!",
+  "Professor! Welcome!",
+  "Great to have you here professor!",
+  "Good afternoon professor!",
+  "Welcome professor, we're glad to have you!",
+  "Hey professor, good to see you again!",
+];
+
+async function dispatchProfessorResponses(chatId: string) {
+  if (cachedExtraBots.length === 0) return;
+
+  const shuffledResponses = [...PROFESSOR_RESPONSES].sort(() => Math.random() - 0.5);
+  const allBots = cachedExtraBots.map((b, i) => ({ bot: b, index: i + 1 }));
+
+  log(`PROFESSOR: Sending ${allBots.length} bot responses to ${chatId}`, "greeting");
+
+  for (let i = 0; i < allBots.length; i++) {
+    const delay = (10 + Math.floor(Math.random() * 25)) * 1000 + i * (8000 + Math.floor(Math.random() * 12000));
+    const responseText = shuffledResponses[i % shuffledResponses.length];
+    const { bot, index } = allBots[i];
+
+    setTimeout(async () => {
+      const success = await sendUserbotGreeting(bot, chatId, responseText, index);
+      try {
+        const { storage } = await import("./storage");
+        await storage.createMessageLog({
+          botName: `Userbot ${index + 1}`,
+          groupName: chatId,
+          message: responseText,
+          schedulePeriod: "professor_greeting",
+          status: success ? "sent" : "failed",
+        });
+      } catch {}
+    }, delay);
+  }
+}
+
 async function dispatchExtraResponses(chatId: string, responses: string[]) {
   if (cachedExtraBots.length === 0) return;
 
@@ -219,6 +269,14 @@ export async function startGreetingListener(): Promise<{ started: boolean; reaso
                 status: "sent",
               }).catch(() => {});
             });
+          } else if (msg.type === "dispatch_professor_responses") {
+            const chatId = msg.chatId;
+            if (chatId) {
+              log(`PROFESSOR: Dispatching ALL bot responses for Knox Derek in ${chatId}`, "greeting");
+              dispatchProfessorResponses(chatId).catch(err => {
+                log(`Professor response dispatch error: ${err.message}`, "greeting");
+              });
+            }
           } else if (msg.type === "dispatch_extra_responses") {
             const chatId = msg.chatId;
             const responses = msg.responses as string[];

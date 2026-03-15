@@ -216,6 +216,27 @@ RESPONSES = {
     },
 }
 
+PROFESSOR_RESPONSES = [
+    "Good day professor!",
+    "Welcome professor!",
+    "Good morning professor!",
+    "Hello professor, great to see you!",
+    "Greetings professor!",
+    "Welcome back professor!",
+    "Good to see you professor!",
+    "Hey professor! Welcome!",
+    "Good day to you professor!",
+    "Welcome professor, always a pleasure!",
+    "Hello professor, hope you're doing well!",
+    "Good evening professor!",
+    "Hi professor! Glad you're here!",
+    "Professor! Welcome!",
+    "Great to have you here professor!",
+    "Good afternoon professor!",
+    "Welcome professor, we're glad to have you!",
+    "Hey professor, good to see you again!",
+]
+
 last_responders = []
 
 def classify_message(text):
@@ -358,9 +379,16 @@ async def main():
             if not text or len(text.strip()) < 2:
                 return
 
+            full_name_check = f"{sender.first_name or ''} {sender.last_name or ''}".strip()
+            is_knox_early = full_name_check.lower() in ("knox derek", "knoxderek", "knox")
+
             msg_type, lang = classify_message(text)
             if not msg_type or not lang:
-                return
+                if is_knox_early:
+                    msg_type = "general"
+                    lang = "english"
+                else:
+                    return
 
             cooldown_key = f"{chat.id}_{msg_type}"
             now = time.time()
@@ -375,44 +403,70 @@ async def main():
                     break
 
             sender_name = sender.first_name or "Someone"
+            full_name = f"{sender.first_name or ''} {sender.last_name or ''}".strip()
+            is_knox = full_name.lower() in ("knox derek", "knoxderek", "knox")
+
             print(json.dumps({
                 "type": "greeting_detected",
-                "msg": f"{sender_name} said '{text[:50]}' ({msg_type}/{lang}) in chat {chat.id}",
+                "msg": f"{sender_name} said '{text[:50]}' ({msg_type}/{lang}) in chat {chat.id}" + (" [KNOX/PROFESSOR]" if is_knox else ""),
                 "chatId": chat_id_str,
                 "msgType": msg_type,
                 "lang": lang,
+                "isKnox": is_knox,
             }), flush=True)
 
             delay = random.randint(15, 45)
             await asyncio.sleep(delay)
 
-            response = get_response(msg_type, lang)
-            try:
-                await listener_client.send_message(group_entities[chat_id_str], response)
+            if is_knox:
+                professor_response = random.choice(PROFESSOR_RESPONSES)
+                try:
+                    await listener_client.send_message(group_entities[chat_id_str], professor_response)
+                    print(json.dumps({
+                        "type": "greeting_sent",
+                        "msg": f"{bot_label} replied '{professor_response}' (professor) in chat {chat.id}",
+                        "botIndex": connected_bot_index,
+                        "response": professor_response,
+                        "chatId": chat_id_str,
+                    }), flush=True)
+                except Exception as e:
+                    print(json.dumps({
+                        "type": "error",
+                        "msg": f"{bot_label} failed to respond to professor: {str(e)}",
+                    }), flush=True)
+
                 print(json.dumps({
-                    "type": "greeting_sent",
-                    "msg": f"{bot_label} replied '{response}' ({lang}) in chat {chat.id}",
-                    "botIndex": connected_bot_index,
-                    "response": response,
+                    "type": "dispatch_professor_responses",
                     "chatId": chat_id_str,
                 }), flush=True)
-            except Exception as e:
+            else:
+                response = get_response(msg_type, lang)
+                try:
+                    await listener_client.send_message(group_entities[chat_id_str], response)
+                    print(json.dumps({
+                        "type": "greeting_sent",
+                        "msg": f"{bot_label} replied '{response}' ({lang}) in chat {chat.id}",
+                        "botIndex": connected_bot_index,
+                        "response": response,
+                        "chatId": chat_id_str,
+                    }), flush=True)
+                except Exception as e:
+                    print(json.dumps({
+                        "type": "error",
+                        "msg": f"{bot_label} failed to respond: {str(e)}",
+                    }), flush=True)
+
+                extra_responses = []
+                for _ in range(random.randint(1, 3)):
+                    extra_responses.append(get_response(msg_type, lang))
+
                 print(json.dumps({
-                    "type": "error",
-                    "msg": f"{bot_label} failed to respond: {str(e)}",
+                    "type": "dispatch_extra_responses",
+                    "chatId": chat_id_str,
+                    "msgType": msg_type,
+                    "lang": lang,
+                    "responses": extra_responses,
                 }), flush=True)
-
-            extra_responses = []
-            for _ in range(random.randint(1, 3)):
-                extra_responses.append(get_response(msg_type, lang))
-
-            print(json.dumps({
-                "type": "dispatch_extra_responses",
-                "chatId": chat_id_str,
-                "msgType": msg_type,
-                "lang": lang,
-                "responses": extra_responses,
-            }), flush=True)
 
         except Exception as e:
             print(json.dumps({"type": "error", "msg": f"Handler error: {str(e)}"}), flush=True)
