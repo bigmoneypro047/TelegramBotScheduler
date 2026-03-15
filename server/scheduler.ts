@@ -1018,75 +1018,97 @@ function selectUniquePhotosForSession(dayOfYear: number, slotSeed: number, group
   return selected;
 }
 
-function generateDinnerSession(groupIndex: number, dayOfYear: number, slotSeed: number, activeBotIndices: number[], languageOverride?: string | null, preSelectedPhoto?: typeof DINNER_PHOTOS[number]): DinnerScheduleItem[] {
-  const lang = resolveGroupLanguage(languageOverride, dayOfYear);
+const PHOTOS_PER_GROUP = 4;
+
+function selectMultiplePhotosForGroup(dayOfYear: number, slotSeed: number, groupIndex: number): typeof DINNER_PHOTOS {
   const isNightSession = slotSeed === 0;
   const timeFilter = isNightSession ? "night" : "day";
   const filteredPhotos = DINNER_PHOTOS.filter(p => p.timeOfDay === timeFilter);
-  const photoIndex = dayOfYear % filteredPhotos.length;
-  const photo = preSelectedPhoto || filteredPhotos[photoIndex];
+
+  const selected: typeof DINNER_PHOTOS = [];
+  const usedBots = new Set<number>();
+  const startIdx = (dayOfYear * 7 + groupIndex * 13 + slotSeed) % filteredPhotos.length;
+
+  for (let attempt = 0; attempt < filteredPhotos.length && selected.length < PHOTOS_PER_GROUP; attempt++) {
+    const photo = filteredPhotos[(startIdx + attempt) % filteredPhotos.length];
+    if (!usedBots.has(photo.assignedBot)) {
+      usedBots.add(photo.assignedBot);
+      selected.push(photo);
+    }
+  }
+
+  while (selected.length < PHOTOS_PER_GROUP) {
+    const fallbackIdx = (startIdx + selected.length) % filteredPhotos.length;
+    selected.push(filteredPhotos[fallbackIdx]);
+  }
+
+  return selected;
+}
+
+function generateDinnerSession(groupIndex: number, dayOfYear: number, slotSeed: number, activeBotIndices: number[], languageOverride?: string | null): DinnerScheduleItem[] {
+  const lang = resolveGroupLanguage(languageOverride, dayOfYear);
+  const isNightSession = slotSeed === 0;
 
   const captionsMap = isNightSession ? PHOTO_CAPTIONS_NIGHT : PHOTO_CAPTIONS_DAY;
   const captions = captionsMap[lang] || captionsMap["English"];
   const comments = DINNER_COMMENTS[lang] || DINNER_COMMENTS["English"];
-  const textStories = DINNER_TEXT_STORIES[lang] || DINNER_TEXT_STORIES["English"];
-
-  const captionIndex = (dayOfYear * 7 + groupIndex * 3 + slotSeed) % captions.length;
 
   const rng = betterRandom(dayOfYear * 100 + groupIndex * 17 + slotSeed);
 
-  const leadBot = photo.assignedBot;
-  const otherActive = activeBotIndices.filter(b => b !== leadBot);
-  const shuffled = shuffleArray([...otherActive], dayOfYear * 7 + groupIndex * 3 + slotSeed);
+  const photos = selectMultiplePhotosForGroup(dayOfYear, slotSeed, groupIndex);
 
-  const storyBot1 = shuffled[0] ?? otherActive[0] ?? 1;
-  const storyBot2 = shuffled[1] ?? otherActive[1] ?? 2;
-  const commentBots = shuffled.slice(2);
-  if (commentBots.length === 0) commentBots.push(shuffled[0] ?? 1);
+  const photoBotIndices = photos.map(p => p.assignedBot);
+  const commentBotPool = activeBotIndices.filter(b => photoBotIndices.indexOf(b) === -1);
+  const shuffledCommenters = shuffleArray([...commentBotPool], dayOfYear * 7 + groupIndex * 3 + slotSeed);
+  if (shuffledCommenters.length === 0) shuffledCommenters.push(activeBotIndices[0] ?? 1);
 
   const commentSeed = dayOfYear * 50 + groupIndex * 11 + slotSeed;
   function pickComment(idx: number): string {
     const i = (commentSeed + idx * 7 + rng.next()) % comments.length;
     return comments[i];
   }
-  function pickTextStory(idx: number): string {
-    const i = (commentSeed + idx * 13 + rng.next()) % textStories.length;
-    return textStories[i];
-  }
 
   const schedule: DinnerScheduleItem[] = [];
   let minute = groupIndex * 3;
+  let commentIdx = 0;
 
+  for (let p = 0; p < photos.length; p++) {
+    const photo = photos[p];
+    const captionIndex = (dayOfYear * 7 + groupIndex * 3 + slotSeed + p * 5) % captions.length;
+
+    schedule.push({
+      botIndex: photo.assignedBot,
+      message: captions[captionIndex],
+      minuteOffset: minute,
+      photoFile: photo.file,
+    });
+
+    minute += 4 + (rng.next() % 4);
+    schedule.push({
+      botIndex: shuffledCommenters[commentIdx % shuffledCommenters.length],
+      message: pickComment(commentIdx),
+      minuteOffset: minute,
+    });
+    commentIdx++;
+
+    if (p < photos.length - 1) {
+      minute += 5 + (rng.next() % 5);
+      schedule.push({
+        botIndex: shuffledCommenters[commentIdx % shuffledCommenters.length],
+        message: pickComment(commentIdx),
+        minuteOffset: minute,
+      });
+      commentIdx++;
+      minute += 6 + (rng.next() % 5);
+    }
+  }
+
+  minute += 4 + (rng.next() % 4);
   schedule.push({
-    botIndex: leadBot,
-    message: captions[captionIndex],
+    botIndex: shuffledCommenters[commentIdx % shuffledCommenters.length],
+    message: pickComment(commentIdx),
     minuteOffset: minute,
-    photoFile: photo.file,
   });
-
-  minute += 5 + (rng.next() % 4);
-  schedule.push({ botIndex: commentBots[0 % commentBots.length], message: pickComment(0), minuteOffset: minute });
-
-  minute += 4 + (rng.next() % 4);
-  schedule.push({ botIndex: commentBots[1 % commentBots.length], message: pickComment(1), minuteOffset: minute });
-
-  minute += 6 + (rng.next() % 5);
-  schedule.push({ botIndex: storyBot1, message: pickTextStory(0), minuteOffset: minute });
-
-  minute += 4 + (rng.next() % 4);
-  schedule.push({ botIndex: commentBots[2 % commentBots.length], message: pickComment(2), minuteOffset: minute });
-
-  minute += 5 + (rng.next() % 4);
-  schedule.push({ botIndex: commentBots[3 % commentBots.length], message: pickComment(3), minuteOffset: minute });
-
-  minute += 7 + (rng.next() % 5);
-  schedule.push({ botIndex: storyBot2, message: pickTextStory(1), minuteOffset: minute });
-
-  minute += 4 + (rng.next() % 4);
-  schedule.push({ botIndex: commentBots[4 % commentBots.length], message: pickComment(4), minuteOffset: minute });
-
-  minute += 4 + (rng.next() % 3);
-  schedule.push({ botIndex: commentBots[5 % commentBots.length], message: pickComment(5), minuteOffset: minute });
 
   return schedule;
 }
@@ -1914,9 +1936,7 @@ export function startScheduler() {
         const activeBots = await getActiveBotIndices();
         const isNightSession = slotSeed === 0;
         const timeFilter = isNightSession ? "night" : "day";
-        const uniquePhotos = selectUniquePhotosForSession(dayOfYear, slotSeed, groupsList.length);
-        const photoSummary = uniquePhotos.map((p, i) => `G${i+1}:${p.file}(Bot${p.assignedBot+1})`).join(", ");
-        log(`Dinner ${lsSlot.label}: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}], photos=[${photoSummary}] (${timeFilter})`, "scheduler");
+        log(`Dinner ${lsSlot.label}: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}], ${PHOTOS_PER_GROUP} photos/group (${timeFilter})`, "scheduler");
 
         const mealsDir = getMealsDir();
         const period = `dinner_${lsSlot.label}`;
@@ -1924,7 +1944,7 @@ export function startScheduler() {
 
         for (let g = 0; g < groupsList.length; g++) {
           const langOverride = (groupsList[g] as any).languageOverride || null;
-          const items = generateDinnerSession(g, dayOfYear, slotSeed, activeBots, langOverride, uniquePhotos[g]);
+          const items = generateDinnerSession(g, dayOfYear, slotSeed, activeBots, langOverride);
           for (const item of items) {
             const delayMs = item.minuteOffset * 60 * 1000;
             const botName = `Userbot ${item.botIndex + 1}`;
