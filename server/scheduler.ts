@@ -346,12 +346,15 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
 
   const shuffledSets = shuffleArray([...sets], seed);
 
+  const maxSetsPerGroup = Math.max(3, Math.ceil(sets.length / 2));
+  const selectedSets = shuffledSets.slice(0, maxSetsPerGroup);
+
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
   let currentMinute = 0;
   const rng = betterRandom(seed + 999);
   const usedMessages = new Set<string>();
 
-  for (const topicSet of shuffledSets) {
+  for (const topicSet of selectedSets) {
     if (currentMinute >= totalMinutes) break;
 
     const botAssignments = assignConversationBots(topicSet.length, rng, activeBotIndices);
@@ -368,6 +371,8 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
       });
       currentMinute += 5;
     }
+
+    currentMinute += 8 + (rng.next() % 7);
   }
 
   return schedule;
@@ -380,12 +385,15 @@ function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, acti
 
   const shuffledThreads = shuffleArray([...threads], seed);
 
+  const maxThreadsPerGroup = Math.max(3, Math.ceil(threads.length / 2));
+  const selectedThreads = shuffledThreads.slice(0, maxThreadsPerGroup);
+
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
   let currentMinute = 0;
   const totalMinutes = 200;
   const rng = betterRandom(seed + 77);
 
-  for (const thread of shuffledThreads) {
+  for (const thread of selectedThreads) {
     if (currentMinute >= totalMinutes) break;
 
     const botAssignments = assignConversationBots(thread.length, rng, activeBotIndices);
@@ -398,6 +406,8 @@ function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, acti
       });
       currentMinute += 5;
     }
+
+    currentMinute += 8 + (rng.next() % 7);
   }
 
   return schedule;
