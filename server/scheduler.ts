@@ -395,19 +395,19 @@ function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, acti
   return schedule;
 }
 
-function generateDoneSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3]): { botIndex: number; message: string; minuteOffset: number }[] {
-  const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
-  let currentMinute = 0;
-  const seed = dayOfYear * 30 + groupIndex;
+function generateDoneSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3], slotSeed: number = 0): { botIndex: number; message: string; delaySec: number }[] {
+  const schedule: { botIndex: number; message: string; delaySec: number }[] = [];
+  const seed = dayOfYear * 30 + groupIndex * 7 + slotSeed;
   const botOrder = shuffleArray(activeBotIndices, seed);
 
+  let currentSec = 0;
   for (let i = 0; i < botOrder.length; i++) {
     schedule.push({
       botIndex: botOrder[i],
       message: "Done",
-      minuteOffset: currentMinute,
+      delaySec: currentSec,
     });
-    currentMinute += 5;
+    currentSec += 20 + (seed + i) % 20;
   }
 
   return schedule;
@@ -530,15 +530,26 @@ export async function getFullScheduleForToday(): Promise<any> {
     });
   }
 
-  for (let g = 0; g < numGroups; g++) {
-    const doneItems = generateDoneSchedule(g, dayOfYear, activeBots);
-    schedule.doneWindow.push({
-      groupIndex: g,
-      messages: doneItems.map(item => ({
-        ...item,
-        time: `3:${String(20 + item.minuteOffset).padStart(2, "0")} PM`,
-      })),
-    });
+  const previewDoneSlots = [
+    { label: "9:05 AM", slotIndex: 0 },
+    { label: "10:05 AM", slotIndex: 1 },
+    { label: "12:05 PM", slotIndex: 2 },
+    { label: "1:05 PM", slotIndex: 3 },
+    { label: "2:05 PM", slotIndex: 4 },
+    { label: "3:05 PM", slotIndex: 5 },
+  ];
+  for (const slot of previewDoneSlots) {
+    for (let g = 0; g < numGroups; g++) {
+      const doneItems = generateDoneSchedule(g, dayOfYear, activeBots, slot.slotIndex);
+      schedule.doneWindow.push({
+        groupIndex: g,
+        slotTime: slot.label,
+        messages: doneItems.map(item => ({
+          ...item,
+          time: `${slot.label} +${item.delaySec}s`,
+        })),
+      });
+    }
   }
 
   for (let g = 0; g < numGroups; g++) {
@@ -880,6 +891,40 @@ async function recoverInProgressSessions(): Promise<void> {
     }
   }
 
+  const doneRecoverySlots = [
+    { startMin: 9 * 60 + 5, endMin: 9 * 60 + 10, label: "9:05 AM", slotIndex: 0 },
+    { startMin: 10 * 60 + 5, endMin: 10 * 60 + 10, label: "10:05 AM", slotIndex: 1 },
+    { startMin: 12 * 60 + 5, endMin: 12 * 60 + 10, label: "12:05 PM", slotIndex: 2 },
+    { startMin: 13 * 60 + 5, endMin: 13 * 60 + 10, label: "1:05 PM", slotIndex: 3 },
+    { startMin: 14 * 60 + 5, endMin: 14 * 60 + 10, label: "2:05 PM", slotIndex: 4 },
+    { startMin: 15 * 60 + 5, endMin: 15 * 60 + 10, label: "3:05 PM", slotIndex: 5 },
+  ];
+
+  for (const doneSlot of doneRecoverySlots) {
+    if (currentMinutes >= doneSlot.startMin && currentMinutes < doneSlot.endMin) {
+      const elapsedSec = (currentMinutes - doneSlot.startMin) * 60;
+      log(`RECOVERY: Server restarted during Done session (${doneSlot.label}). Scheduling remaining...`, "scheduler");
+      const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
+      for (let g = 0; g < groupsList.length; g++) {
+        const items = generateDoneSchedule(g, dayOfYear, activeBots, doneSlot.slotIndex);
+        const remaining = items.filter(item => item.delaySec > elapsedSec);
+        for (const item of remaining) {
+          allItems.push({
+            botName: `Userbot ${item.botIndex + 1}`,
+            groupName: groupsList[g].name,
+            message: item.message,
+            delayMs: (item.delaySec - elapsedSec) * 1000,
+          });
+        }
+      }
+      allItems.sort((a, b) => a.delayMs - b.delayMs);
+      if (allItems.length > 0) {
+        const count = scheduleMessagesWithTimers(allItems, `done_recovery_${doneSlot.label}`);
+        log(`RECOVERY: ${count} Done messages scheduled for ${doneSlot.label}`, "scheduler");
+      }
+    }
+  }
+
   if (currentMinutes < morningStart || currentMinutes >= eveningEnd) {
     log(`RECOVERY: No active session at ${hour}:${minute.toString().padStart(2,'0')} — nothing to recover`, "scheduler");
   }
@@ -985,36 +1030,49 @@ export function startScheduler() {
     scheduledJobs.push(readyJob);
   }
 
-  const doneJob = cron.schedule("20 15 * * *", async () => {
-    try {
-      log("=== DONE SESSION TRIGGERED ===", "scheduler");
-      const dayOfYear = getDayOfYear();
-      const groupsList = await getGroupsWithRetry();
-      const activeBots = await getActiveBotIndices();
-      log(`Done session: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
+  const doneSlots = [
+    { cron: "5 9 * * *", label: "9:05 AM" },
+    { cron: "5 10 * * *", label: "10:05 AM" },
+    { cron: "5 12 * * *", label: "12:05 PM" },
+    { cron: "5 13 * * *", label: "1:05 PM" },
+    { cron: "5 14 * * *", label: "2:05 PM" },
+    { cron: "5 15 * * *", label: "3:05 PM" },
+  ];
 
-      const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
-      for (let g = 0; g < groupsList.length; g++) {
-        const items = generateDoneSchedule(g, dayOfYear, activeBots);
-        for (const item of items) {
-          allItems.push({
-            botName: `Userbot ${item.botIndex + 1}`,
-            groupName: groupsList[g].name,
-            message: item.message,
-            delayMs: item.minuteOffset * 60 * 1000,
-          });
+  for (let s = 0; s < doneSlots.length; s++) {
+    const slot = doneSlots[s];
+    const slotIndex = s;
+    const doneJob = cron.schedule(slot.cron, async () => {
+      try {
+        log(`=== DONE SESSION TRIGGERED (${slot.label}) ===`, "scheduler");
+        const dayOfYear = getDayOfYear();
+        const groupsList = await getGroupsWithRetry();
+        const activeBots = await getActiveBotIndices();
+        log(`Done ${slot.label}: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
+
+        const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
+        for (let g = 0; g < groupsList.length; g++) {
+          const items = generateDoneSchedule(g, dayOfYear, activeBots, slotIndex);
+          for (const item of items) {
+            allItems.push({
+              botName: `Userbot ${item.botIndex + 1}`,
+              groupName: groupsList[g].name,
+              message: item.message,
+              delayMs: item.delaySec * 1000,
+            });
+          }
         }
-      }
-      allItems.sort((a, b) => a.delayMs - b.delayMs);
-      log(`Done session: ${allItems.length} total messages queued via setTimeout`, "scheduler");
+        allItems.sort((a, b) => a.delayMs - b.delayMs);
+        log(`Done ${slot.label}: ${allItems.length} total messages queued`, "scheduler");
 
-      const count = scheduleMessagesWithTimers(allItems, "done_session");
-      log(`Done session: ${count} messages scheduled`, "scheduler");
-    } catch (err: any) {
-      log(`CRITICAL: Done session crashed: ${err.message}\n${err.stack}`, "scheduler");
-    }
-  }, { timezone: NIGERIA_TZ });
-  scheduledJobs.push(doneJob);
+        const count = scheduleMessagesWithTimers(allItems, `done_${slot.label}`);
+        log(`Done ${slot.label}: ${count} messages scheduled`, "scheduler");
+      } catch (err: any) {
+        log(`CRITICAL: Done session (${slot.label}) crashed: ${err.message}\n${err.stack}`, "scheduler");
+      }
+    }, { timezone: NIGERIA_TZ });
+    scheduledJobs.push(doneJob);
+  }
 
   const eveningJob = cron.schedule("25 15 * * *", async () => {
     try {
