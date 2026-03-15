@@ -25,7 +25,7 @@ function scheduleMessagesWithTimers(
   allItems: { botName: string; groupName: string; message: string; delayMs: number }[],
   sessionName: string
 ): number {
-  const groupNames = [...new Set(allItems.map(i => i.groupName))];
+  const groupNames = Array.from(new Set(allItems.map(i => i.groupName)));
   const groupStagger = new Map<string, number>();
   groupNames.forEach((name, idx) => {
     groupStagger.set(name, idx * (60000 + Math.floor(Math.random() * 60000)));
@@ -48,6 +48,83 @@ function scheduleMessagesWithTimers(
     scheduled++;
   }
   return scheduled;
+}
+
+interface ConversationItem {
+  botName: string;
+  groupName: string;
+  message: string;
+  delayMs: number;
+  threadId: number;
+  msgIndex: number;
+  shouldReply: boolean;
+}
+
+function scheduleConversationWithReplies(
+  allItems: ConversationItem[],
+  sessionName: string
+): number {
+  const byGroup = new Map<string, ConversationItem[]>();
+  for (const item of allItems) {
+    const key = item.groupName;
+    if (!byGroup.has(key)) byGroup.set(key, []);
+    byGroup.get(key)!.push(item);
+  }
+
+  let scheduled = 0;
+  let groupOffset = 0;
+  const groupKeys = Array.from(byGroup.keys());
+  for (const groupName of groupKeys) {
+    const items = byGroup.get(groupName)!;
+    items.sort((a: ConversationItem, b: ConversationItem) => a.delayMs - b.delayMs);
+    const stagger = groupOffset * (60000 + Math.floor(Math.random() * 60000));
+    groupOffset++;
+
+    const byThread = new Map<number, ConversationItem[]>();
+    for (const item of items) {
+      if (!byThread.has(item.threadId)) byThread.set(item.threadId, []);
+      byThread.get(item.threadId)!.push(item);
+    }
+
+    const threadKeys = Array.from(byThread.keys());
+    for (const threadId of threadKeys) {
+      const threadItems = byThread.get(threadId)!;
+      const threadKey = `${sessionName}_${groupName}_t${threadId}`;
+      const baseDelay = threadItems[0].delayMs + stagger;
+
+      setTimeout(async () => {
+        const sentMsgIds: number[] = [];
+        for (let i = 0; i < threadItems.length; i++) {
+          const item = threadItems[i];
+          const msgNum = ++scheduled;
+          const total = allItems.length;
+
+          let replyToMsgId: number | undefined;
+          if (item.shouldReply && sentMsgIds.length > 0) {
+            const replyIdx = item.msgIndex <= 1
+              ? 0
+              : Math.max(0, sentMsgIds.length - 1 - (item.msgIndex % 2));
+            replyToMsgId = sentMsgIds[replyIdx];
+          }
+
+          try {
+            log(`${sessionName} msg ${msgNum}/${total}: ${item.botName} → ${groupName} (thread=${threadId}, reply=${replyToMsgId || "none"})`, "scheduler");
+            const msgId = await sendOneMessage(item.botName, groupName, item.message, sessionName, replyToMsgId);
+            if (msgId) sentMsgIds.push(msgId);
+          } catch (err: any) {
+            log(`${sessionName} msg ${msgNum}/${total} FAILED: ${err.message}`, "scheduler");
+          }
+
+          if (i < threadItems.length - 1) {
+            const nextDelay = threadItems[i + 1].delayMs - item.delayMs;
+            await sleep(Math.max(nextDelay, 15000));
+          }
+        }
+      }, baseDelay);
+    }
+  }
+
+  return allItems.length;
 }
 
 async function queryGroupsDirect(): Promise<Awaited<ReturnType<typeof storage.getGroups>>> {
@@ -334,41 +411,53 @@ function resolveGroupLanguage(languageOverride: string | null | undefined, dayOf
   return langs[dayOfYear % langs.length];
 }
 
-function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCount: number = 5, activeBotIndices: number[] = [0, 1, 2, 3], languageOverride?: string | null): { botIndex: number; message: string; minuteOffset: number }[] {
+function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCount: number = 5, activeBotIndices: number[] = [0, 1, 2, 3], languageOverride?: string | null): { botIndex: number; message: string; minuteOffset: number; threadId: number; msgIndex: number; shouldReply: boolean }[] {
   const lang = resolveGroupLanguage(languageOverride, dayOfYear);
   const eveningTopics = EVENING_CHAT_BY_LANG[lang] || EVENING_CHAT_BY_LANG["English"];
   const dayOfWeek = getNigeriaDate().getDay();
   const topicSets = eveningTopics[dayOfWeek] || eveningTopics[0];
+  const dayCycle = dayOfYear % 30;
 
   const sets = topicSets.map(s => [...s]);
   const seed = dayOfYear * 100 + groupIndex * 37;
   const totalMinutes = 215;
 
-  const shuffledSets = shuffleArray([...sets], seed);
+  const startOffset = (dayCycle * groupCount + groupIndex) % sets.length;
+  const maxSetsPerGroup = Math.max(2, Math.ceil(sets.length / groupCount));
+  const selectedSets: string[][] = [];
+  for (let i = 0; i < maxSetsPerGroup && selectedSets.length < maxSetsPerGroup; i++) {
+    selectedSets.push(sets[(startOffset + i) % sets.length]);
+  }
 
-  const maxSetsPerGroup = Math.max(3, Math.ceil(sets.length / 2));
-  const selectedSets = shuffledSets.slice(0, maxSetsPerGroup);
-
-  const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
+  const schedule: { botIndex: number; message: string; minuteOffset: number; threadId: number; msgIndex: number; shouldReply: boolean }[] = [];
   let currentMinute = 0;
   const rng = betterRandom(seed + 999);
   const usedMessages = new Set<string>();
 
-  for (const topicSet of selectedSets) {
+  for (let t = 0; t < selectedSets.length; t++) {
+    const topicSet = selectedSets[t];
     if (currentMinute >= totalMinutes) break;
 
-    const botAssignments = assignConversationBots(topicSet.length, rng, activeBotIndices);
+    const botShift = (dayCycle + t) % activeBotIndices.length;
+    const shiftedBots = [...activeBotIndices.slice(botShift), ...activeBotIndices.slice(0, botShift)];
+    const botAssignments = assignConversationBots(topicSet.length, rng, shiftedBots);
 
+    let msgIdx = 0;
     for (let m = 0; m < topicSet.length && currentMinute < totalMinutes; m++) {
       const msg = topicSet[m];
       if (usedMessages.has(msg)) continue;
       usedMessages.add(msg);
 
+      const shouldReply = msgIdx > 0 && (rng.next() % 100) < 60;
       schedule.push({
         botIndex: botAssignments[m],
         message: msg,
         minuteOffset: currentMinute,
+        threadId: t,
+        msgIndex: msgIdx,
+        shouldReply,
       });
+      msgIdx++;
       currentMinute += 5;
     }
 
@@ -378,31 +467,41 @@ function generateEveningMessages(groupIndex: number, dayOfYear: number, groupCou
   return schedule;
 }
 
-function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3], languageOverride?: string | null): { botIndex: number; message: string; minuteOffset: number }[] {
+function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3], languageOverride?: string | null, numGroups: number = 7): { botIndex: number; message: string; minuteOffset: number; threadId: number; msgIndex: number; shouldReply: boolean }[] {
   const lang = resolveGroupLanguage(languageOverride, dayOfYear);
   const threads = MORNING_THREADS_BY_LANG[lang] || MORNING_THREADS_BY_LANG["English"];
+  const dayCycle = dayOfYear % 30;
+  const threadIndex = (dayCycle + groupIndex) % threads.length;
+  const secondThreadIndex = (dayCycle + groupIndex + Math.max(1, Math.floor(threads.length / 2))) % threads.length;
+
+  const selectedThreads = [threads[threadIndex]];
+  if (secondThreadIndex !== threadIndex) {
+    selectedThreads.push(threads[secondThreadIndex]);
+  }
+
   const seed = dayOfYear * 50 + groupIndex * 7;
-
-  const shuffledThreads = shuffleArray([...threads], seed);
-
-  const maxThreadsPerGroup = Math.max(3, Math.ceil(threads.length / 2));
-  const selectedThreads = shuffledThreads.slice(0, maxThreadsPerGroup);
-
-  const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
+  const schedule: { botIndex: number; message: string; minuteOffset: number; threadId: number; msgIndex: number; shouldReply: boolean }[] = [];
   let currentMinute = 0;
   const totalMinutes = 200;
   const rng = betterRandom(seed + 77);
 
-  for (const thread of selectedThreads) {
+  for (let t = 0; t < selectedThreads.length; t++) {
+    const thread = selectedThreads[t];
     if (currentMinute >= totalMinutes) break;
 
-    const botAssignments = assignConversationBots(thread.length, rng, activeBotIndices);
+    const botShift = (dayCycle + t) % activeBotIndices.length;
+    const shiftedBots = [...activeBotIndices.slice(botShift), ...activeBotIndices.slice(0, botShift)];
+    const botAssignments = assignConversationBots(thread.length, rng, shiftedBots);
 
     for (let m = 0; m < thread.length && currentMinute < totalMinutes; m++) {
+      const shouldReply = m > 0 && (rng.next() % 100) < 60;
       schedule.push({
         botIndex: botAssignments[m],
         message: thread[m],
         minuteOffset: currentMinute,
+        threadId: t,
+        msgIndex: m,
+        shouldReply,
       });
       currentMinute += 5;
     }
@@ -1202,29 +1301,31 @@ async function sendTelegramBotMessage(token: string, chatId: string, message: st
   return false;
 }
 
-async function sendUserbotMessage(sessionString: string, apiId: string, apiHash: string, chatId: string, message: string): Promise<boolean> {
+async function sendUserbotMessage(sessionString: string, apiId: string, apiHash: string, chatId: string, message: string, replyToMsgId?: number): Promise<{ success: boolean; messageId?: number }> {
   if (process.env.NODE_ENV === "development") {
     log("DEV MODE: Skipping userbot message to avoid session conflicts with production", "telegram");
-    return true;
+    return { success: true, messageId: Math.floor(Math.random() * 100000) };
   }
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const pythonBin = getPythonPath();
-      const { stdout } = await execFileAsync(pythonBin, [
+      const args = [
         "server/telegram_sender.py", "send",
         sessionString, apiId, apiHash, chatId, message
-      ], { timeout: 60000 });
+      ];
+      if (replyToMsgId) args.push(String(replyToMsgId));
+      const { stdout } = await execFileAsync(pythonBin, args, { timeout: 60000 });
       const result = JSON.parse(stdout.trim());
       if (result.success) {
         if (attempt > 0) log(`Userbot message succeeded on retry #${attempt}`, "telegram");
-        return true;
+        return { success: true, messageId: result.messageId };
       }
       log(`Userbot send attempt ${attempt + 1} failed: ${result.error}`, "telegram");
     } catch (err: any) {
       const errMsg = err.message || "";
       if (errMsg.includes("AuthKeyDuplicatedError") || errMsg.includes("auth key")) {
         log(`SESSION BROKEN (AuthKeyDuplicatedError) — this bot needs re-authentication. Skipping retries.`, "telegram");
-        return false;
+        return { success: false };
       }
       log(`Userbot message attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ${errMsg}`, "telegram");
     }
@@ -1235,7 +1336,7 @@ async function sendUserbotMessage(sessionString: string, apiId: string, apiHash:
     }
   }
   log(`Userbot message FAILED after ${MAX_RETRIES + 1} attempts`, "telegram");
-  return false;
+  return { success: false };
 }
 
 async function sendUserbotPhoto(sessionString: string, apiId: string, apiHash: string, chatId: string, photoUrl: string, caption: string): Promise<boolean> {
@@ -1304,7 +1405,7 @@ async function executeScheduledPhoto(botName: string, groupName: string, photoUr
   await storage.createMessageLog({ botName, groupName, message: `[PHOTO] ${caption}`, schedulePeriod: period, status: success ? "sent" : "failed" });
 }
 
-async function executeScheduledMessage(botName: string, groupName: string, message: string, period: string) {
+async function executeScheduledMessage(botName: string, groupName: string, message: string, period: string, replyToMsgId?: number): Promise<number | undefined> {
   let config, bots, groupsList;
   try {
     [config, bots, groupsList] = await Promise.all([
@@ -1345,7 +1446,7 @@ async function executeScheduledMessage(botName: string, groupName: string, messa
       schedulePeriod: period,
       status: "skipped_no_group",
     });
-    return;
+    return undefined;
   }
 
   if (botName === "Main Bot") {
@@ -1353,25 +1454,27 @@ async function executeScheduledMessage(botName: string, groupName: string, messa
     if (!token) {
       log("No bot token configured", "scheduler");
       await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: "skipped_no_token" });
-      return;
+      return undefined;
     }
     const success = await sendTelegramBotMessage(token, group.groupId, message);
     await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: success ? "sent" : "failed" });
+    return undefined;
   } else {
     const botIndex = parseInt(botName.replace("Userbot ", "")) - 1;
     const bot = bots[botIndex];
     if (!bot || !bot.sessionString || !bot.apiId || !bot.apiHash) {
       log(`${botName} not configured properly (missing session/apiId/apiHash)`, "scheduler");
       await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: "skipped_no_config" });
-      return;
+      return undefined;
     }
     if (!bot.isActive) {
       log(`${botName} is inactive, skipping`, "scheduler");
       await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: "skipped_inactive" });
-      return;
+      return undefined;
     }
-    const success = await sendUserbotMessage(bot.sessionString, bot.apiId, bot.apiHash, group.groupId, message);
-    await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: success ? "sent" : "failed" });
+    const result = await sendUserbotMessage(bot.sessionString, bot.apiId, bot.apiHash, group.groupId, message, replyToMsgId);
+    await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: result.success ? "sent" : "failed" });
+    return result.messageId;
   }
 }
 
@@ -1433,15 +1536,16 @@ async function retryFailedMessages(): Promise<void> {
   }
 }
 
-async function safeExecuteScheduledMessage(botName: string, groupName: string, message: string, period: string) {
+async function safeExecuteScheduledMessage(botName: string, groupName: string, message: string, period: string, replyToMsgId?: number): Promise<number | undefined> {
   try {
-    await executeScheduledMessage(botName, groupName, message, period);
+    return await executeScheduledMessage(botName, groupName, message, period, replyToMsgId);
   } catch (err: any) {
     log(`CRITICAL: executeScheduledMessage crashed for ${botName}/${groupName}: ${err.message}`, "scheduler");
     failedMessageQueue.push({ botName, groupName, message, period, failedAt: new Date(), retryCount: 0 });
     try {
       await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: "error_crash_queued" });
     } catch (_) {}
+    return undefined;
   }
 }
 
@@ -1449,20 +1553,25 @@ async function sendOneMessage(
   botName: string,
   groupName: string,
   message: string,
-  period: string
-): Promise<void> {
+  period: string,
+  replyToMsgId?: number
+): Promise<number | undefined> {
   if (isDuplicate(botName, groupName, message)) {
     log(`[${period}] DEDUP SKIP: ${botName} → ${groupName} (already sent within ${DEDUP_WINDOW_MS / 60000}min)`, "scheduler");
-    return;
+    return undefined;
   }
   log(`[${period}] SEND START: ${botName} → ${groupName}`, "scheduler");
   try {
-    await safeExecuteScheduledMessage(botName, groupName, message, period);
-    log(`[${period}] SEND DONE: ${botName} → ${groupName}`, "scheduler");
+    const msgId = await safeExecuteScheduledMessage(botName, groupName, message, period, replyToMsgId);
+    log(`[${period}] SEND DONE: ${botName} → ${groupName} (msgId=${msgId || "?"})`, "scheduler");
+    return msgId;
   } catch (err: any) {
     log(`[${period}] SEND FAILED: ${botName} → ${groupName}: ${err.message}`, "scheduler");
+    return undefined;
   }
 }
+
+const conversationMsgIds: Map<string, number[]> = new Map();
 
 async function checkPythonAvailable(): Promise<boolean> {
   try {
@@ -1543,23 +1652,26 @@ async function recoverInProgressSessions(): Promise<void> {
     const elapsedMinutes = currentMinutes - morningStart;
     log(`RECOVERY: Server restarted during morning session (${elapsedMinutes}min elapsed). Scheduling remaining messages...`, "scheduler");
 
-    const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
+    const allConvItems: ConversationItem[] = [];
     for (let g = 0; g < groupsList.length; g++) {
       const langOverride = (groupsList[g] as any).languageOverride || null;
       const items = generateMorningChatSchedule(g, dayOfYear, activeBots, langOverride);
       const remaining = items.filter(item => item.minuteOffset > elapsedMinutes);
       for (const item of remaining) {
-        allItems.push({
+        allConvItems.push({
           botName: `Userbot ${item.botIndex + 1}`,
           groupName: groupsList[g].name,
           message: item.message,
           delayMs: (item.minuteOffset - elapsedMinutes) * 60 * 1000,
+          threadId: item.threadId,
+          msgIndex: item.msgIndex,
+          shouldReply: item.shouldReply,
         });
       }
     }
-    allItems.sort((a, b) => a.delayMs - b.delayMs);
-    if (allItems.length > 0) {
-      const count = scheduleMessagesWithTimers(allItems, "morning_chat_recovery");
+    allConvItems.sort((a, b) => a.delayMs - b.delayMs);
+    if (allConvItems.length > 0) {
+      const count = scheduleConversationWithReplies(allConvItems, "morning_chat_recovery");
       log(`RECOVERY: ${count} morning messages scheduled (skipped first ${elapsedMinutes} min)`, "scheduler");
     } else {
       log(`RECOVERY: No remaining morning messages to schedule`, "scheduler");
@@ -1572,23 +1684,26 @@ async function recoverInProgressSessions(): Promise<void> {
     const elapsedMinutes = currentMinutes - eveningStart;
     log(`RECOVERY: Server restarted during evening session (${elapsedMinutes}min elapsed). Scheduling remaining messages...`, "scheduler");
 
-    const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
+    const allConvItems2: ConversationItem[] = [];
     for (let g = 0; g < groupsList.length; g++) {
       const langOverride = (groupsList[g] as any).languageOverride || null;
       const items = generateEveningMessages(g, dayOfYear, groupsList.length, activeBots, langOverride);
       const remaining = items.filter(item => item.minuteOffset > elapsedMinutes);
       for (const item of remaining) {
-        allItems.push({
+        allConvItems2.push({
           botName: `Userbot ${item.botIndex + 1}`,
           groupName: groupsList[g].name,
           message: item.message,
           delayMs: (item.minuteOffset - elapsedMinutes) * 60 * 1000,
+          threadId: item.threadId,
+          msgIndex: item.msgIndex,
+          shouldReply: item.shouldReply,
         });
       }
     }
-    allItems.sort((a, b) => a.delayMs - b.delayMs);
-    if (allItems.length > 0) {
-      const count = scheduleMessagesWithTimers(allItems, "evening_chat_recovery");
+    allConvItems2.sort((a, b) => a.delayMs - b.delayMs);
+    if (allConvItems2.length > 0) {
+      const count = scheduleConversationWithReplies(allConvItems2, "evening_chat_recovery");
       log(`RECOVERY: ${count} evening messages scheduled (skipped first ${elapsedMinutes} min)`, "scheduler");
     } else {
       log(`RECOVERY: No remaining evening messages to schedule`, "scheduler");
@@ -1677,24 +1792,27 @@ export function startScheduler() {
       const activeBots = await getActiveBotIndices();
       log(`Morning chat: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
 
-      const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
+      const allConvItems: ConversationItem[] = [];
       for (let g = 0; g < groupsList.length; g++) {
         const langOverride = (groupsList[g] as any).languageOverride || null;
         const items = generateMorningChatSchedule(g, dayOfYear, activeBots, langOverride);
         for (const item of items) {
-          allItems.push({
+          allConvItems.push({
             botName: `Userbot ${item.botIndex + 1}`,
             groupName: groupsList[g].name,
             message: item.message,
             delayMs: item.minuteOffset * 60 * 1000,
+            threadId: item.threadId,
+            msgIndex: item.msgIndex,
+            shouldReply: item.shouldReply,
           });
         }
       }
-      allItems.sort((a, b) => a.delayMs - b.delayMs);
-      log(`Morning chat: ${allItems.length} total messages queued via setTimeout`, "scheduler");
+      allConvItems.sort((a, b) => a.delayMs - b.delayMs);
+      log(`Morning chat: ${allConvItems.length} total messages queued via conversation scheduler`, "scheduler");
 
-      const count = scheduleMessagesWithTimers(allItems, "morning_chat");
-      log(`Morning chat: ${count} messages scheduled, last fires at +${allItems[allItems.length - 1]?.delayMs / 60000 || 0} min`, "scheduler");
+      const count = scheduleConversationWithReplies(allConvItems, "morning_chat");
+      log(`Morning chat: ${count} messages scheduled, last fires at +${allConvItems[allConvItems.length - 1]?.delayMs / 60000 || 0} min`, "scheduler");
     } catch (err: any) {
       log(`CRITICAL: Morning chat crashed: ${err.message}\n${err.stack}`, "scheduler");
     }
@@ -1841,24 +1959,27 @@ export function startScheduler() {
       const activeBots = await getActiveBotIndices();
       log(`Evening chat: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
 
-      const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
+      const allConvItems: ConversationItem[] = [];
       for (let g = 0; g < groupsList.length; g++) {
         const langOverride = (groupsList[g] as any).languageOverride || null;
         const items = generateEveningMessages(g, dayOfYear, groupsList.length, activeBots, langOverride);
         for (const item of items) {
-          allItems.push({
+          allConvItems.push({
             botName: `Userbot ${item.botIndex + 1}`,
             groupName: groupsList[g].name,
             message: item.message,
             delayMs: item.minuteOffset * 60 * 1000,
+            threadId: item.threadId,
+            msgIndex: item.msgIndex,
+            shouldReply: item.shouldReply,
           });
         }
       }
-      allItems.sort((a, b) => a.delayMs - b.delayMs);
-      log(`Evening chat: ${allItems.length} total messages queued via setTimeout`, "scheduler");
+      allConvItems.sort((a, b) => a.delayMs - b.delayMs);
+      log(`Evening chat: ${allConvItems.length} total messages queued via conversation scheduler`, "scheduler");
 
-      const count = scheduleMessagesWithTimers(allItems, "evening_chat");
-      log(`Evening chat: ${count} messages scheduled, last fires at +${allItems[allItems.length - 1]?.delayMs / 60000 || 0} min`, "scheduler");
+      const count = scheduleConversationWithReplies(allConvItems, "evening_chat");
+      log(`Evening chat: ${count} messages scheduled, last fires at +${allConvItems[allConvItems.length - 1]?.delayMs / 60000 || 0} min`, "scheduler");
     } catch (err: any) {
       log(`CRITICAL: Evening chat crashed: ${err.message}\n${err.stack}`, "scheduler");
     }
@@ -1898,7 +2019,7 @@ export async function triggerEveningChatNow(): Promise<string> {
     const now = getNigeriaDate();
     const currentMinutesFromStart = (now.getHours() * 60 + now.getMinutes()) - (15 * 60 + 25);
 
-    const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
+    const allConvItems: ConversationItem[] = [];
     for (let g = 0; g < groupsList.length; g++) {
       const langOverride = (groupsList[g] as any).languageOverride || null;
       const items = generateEveningMessages(g, dayOfYear, groupsList.length, activeBots, langOverride);
@@ -1906,18 +2027,21 @@ export async function triggerEveningChatNow(): Promise<string> {
       if (remaining.length === 0) continue;
       const firstOffset = remaining[0].minuteOffset;
       for (const item of remaining) {
-        allItems.push({
+        allConvItems.push({
           botName: `Userbot ${item.botIndex + 1}`,
           groupName: groupsList[g].name,
           message: item.message,
           delayMs: (item.minuteOffset - firstOffset) * 60 * 1000,
+          threadId: item.threadId,
+          msgIndex: item.msgIndex,
+          shouldReply: item.shouldReply,
         });
       }
     }
-    allItems.sort((a, b) => a.delayMs - b.delayMs);
-    log(`Manual evening: ${allItems.length} messages queued via setTimeout (offset was ${currentMinutesFromStart}min)`, "scheduler");
+    allConvItems.sort((a, b) => a.delayMs - b.delayMs);
+    log(`Manual evening: ${allConvItems.length} messages queued (offset was ${currentMinutesFromStart}min)`, "scheduler");
 
-    const count = scheduleMessagesWithTimers(allItems, "evening_chat_manual");
+    const count = scheduleConversationWithReplies(allConvItems, "evening_chat_manual");
     log(`Manual evening: ${count} messages scheduled`, "scheduler");
     return `Scheduled ${count} messages across ${groupsList.length} groups`;
   } catch (err: any) {
@@ -1938,15 +2062,18 @@ export async function triggerMorningTestNow(): Promise<string> {
     const group = groupsList[0];
     const langOverride = (group as any).languageOverride || null;
     const items = generateMorningChatSchedule(0, dayOfYear, activeBots, langOverride);
-    const allItems = items.map(item => ({
+    const allConvItems: ConversationItem[] = items.map(item => ({
       botName: `Userbot ${item.botIndex + 1}`,
       groupName: group.name,
       message: item.message,
       delayMs: item.minuteOffset * 60 * 1000,
+      threadId: item.threadId,
+      msgIndex: item.msgIndex,
+      shouldReply: item.shouldReply,
     }));
-    log(`Morning test: ${group.name} — ${allItems.length} messages`, "scheduler");
+    log(`Morning test: ${group.name} — ${allConvItems.length} messages`, "scheduler");
 
-    const count = scheduleMessagesWithTimers(allItems, "morning_test");
+    const count = scheduleConversationWithReplies(allConvItems, "morning_test");
     log(`Morning test: ${count} messages scheduled over ${items[items.length - 1]?.minuteOffset || 0} minutes`, "scheduler");
     return `Scheduled ${count} messages to ${group.name} over ${items[items.length - 1]?.minuteOffset || 0} minutes`;
   } catch (err: any) {
@@ -1971,16 +2098,19 @@ export async function triggerMorningSpeedTest(): Promise<string> {
     const totalDurationMs = 60 * 60 * 1000;
     const intervalMs = Math.floor(totalDurationMs / (totalMessages - 1 || 1));
 
-    const allItems = items.map((item, idx) => ({
+    const allConvItems: ConversationItem[] = items.map((item, idx) => ({
       botName: `Userbot ${item.botIndex + 1}`,
       groupName: group.name,
       message: item.message,
       delayMs: idx * intervalMs,
+      threadId: item.threadId,
+      msgIndex: item.msgIndex,
+      shouldReply: item.shouldReply,
     }));
 
     log(`Speed test: ${totalMessages} msgs to ${group.name}, ~${Math.round(intervalMs/1000)}s apart, total 60 min`, "scheduler");
 
-    const count = scheduleMessagesWithTimers(allItems, "morning_speed_test");
+    const count = scheduleConversationWithReplies(allConvItems, "morning_speed_test");
     const intervalSec = Math.round(intervalMs / 1000);
     log(`Speed test: ${count} messages scheduled, one every ~${intervalSec}s for 60 min`, "scheduler");
     return `Speed test started: ${count} messages to ${group.name}, one every ~${intervalSec}s for the next 60 minutes`;

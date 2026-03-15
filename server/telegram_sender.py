@@ -5,7 +5,7 @@ from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.types import PeerChannel
 
-async def send_message(session_string, api_id, api_hash, chat_id, message):
+async def send_message(session_string, api_id, api_hash, chat_id, message, reply_to_msg_id=None):
     client = TelegramClient(StringSession(session_string), int(api_id), api_hash)
     await client.connect()
     
@@ -22,10 +22,11 @@ async def send_message(session_string, api_id, api_hash, chat_id, message):
         else:
             entity = await client.get_entity(target_id)
         
-        await client.send_message(entity, message)
+        reply_to = int(reply_to_msg_id) if reply_to_msg_id else None
+        sent = await client.send_message(entity, message, reply_to=reply_to)
         new_session = client.session.save()
         await client.disconnect()
-        print(json.dumps({"success": True, "session": new_session}))
+        print(json.dumps({"success": True, "session": new_session, "messageId": sent.id}))
     except Exception as e:
         print(json.dumps({"success": False, "error": str(e)}))
         try:
@@ -170,7 +171,8 @@ if __name__ == "__main__":
         api_hash = sys.argv[4]
         chat_id = sys.argv[5]
         message = sys.argv[6]
-        asyncio.run(send_message(session_string, api_id, api_hash, chat_id, message))
+        reply_to = sys.argv[7] if len(sys.argv) > 7 else None
+        asyncio.run(send_message(session_string, api_id, api_hash, chat_id, message, reply_to))
     
     elif action == "request_code":
         api_id = sys.argv[2]
