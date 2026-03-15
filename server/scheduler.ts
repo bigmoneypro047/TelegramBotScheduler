@@ -246,22 +246,22 @@ function generateReadySchedule(windowIndex: number, groupIndex: number, dayOfYea
   const readyMessages = READY_MESSAGES_BY_LANG[lang] || READY_MESSAGES_BY_LANG["English"];
   const seed = dayOfYear * 1000 + windowIndex * 100 + groupIndex;
   const shuffledMessages = shuffleArray(readyMessages, seed);
-  const botOrder = generateNaturalBotOrder(activeBotIndices.length, activeBotIndices, seed + 7);
+  const allBots = shuffleArray([...activeBotIndices], seed + 7);
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
 
   let s = seed + 7;
   let currentMinute = 0;
 
-  for (let i = 0; i < botOrder.length; i++) {
+  for (let i = 0; i < allBots.length; i++) {
     schedule.push({
-      botIndex: botOrder[i],
+      botIndex: allBots[i],
       message: shuffledMessages[i % shuffledMessages.length],
       minuteOffset: currentMinute,
     });
     s = (s * 1103515245 + 12345) & 0x7fffffff;
     const gap = 1 + (s % 3);
     currentMinute += gap;
-    if (currentMinute > 10) currentMinute = 10;
+    if (currentMinute > 15) currentMinute = 15;
   }
 
   return schedule;
