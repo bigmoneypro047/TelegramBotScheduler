@@ -1105,6 +1105,24 @@ function generateGlobalDinnerSchedule(
   const commentBotPool = activeBotIndices.filter(b => photoBotIndices.indexOf(b) === -1);
   if (commentBotPool.length === 0) commentBotPool.push(activeBotIndices[0] ?? 1);
 
+  const usedCommentsByLang: Record<string, Set<number>> = {};
+
+  function pickUniqueComment(lang: string, comments: string[], seed: number): string {
+    if (!usedCommentsByLang[lang]) usedCommentsByLang[lang] = new Set();
+    const used = usedCommentsByLang[lang];
+    if (used.size >= comments.length) used.clear();
+    let idx = seed % comments.length;
+    let attempts = 0;
+    while (used.has(idx) && attempts < comments.length) {
+      idx = (idx + 1) % comments.length;
+      attempts++;
+    }
+    used.add(idx);
+    return comments[idx];
+  }
+
+  let commentCounter = 0;
+
   for (let p = 0; p < photos.length; p++) {
     const photo = photos[p];
     const captionIdx = captionIndices[p];
@@ -1133,21 +1151,23 @@ function generateGlobalDinnerSchedule(
       const shuffledCommenters = shuffleArray([...commentBotPool], commentSeed);
 
       const comment1Min = photoMinute + 3 + (commentRng.next() % 3);
-      const commentIdx1 = (commentSeed + commentRng.next()) % comments.length;
+      const comment1Seed = dayOfYear * 31 + slotSeed * 13 + commentCounter;
+      commentCounter++;
       schedule.push({
         botIndex: shuffledCommenters[0 % shuffledCommenters.length],
         groupIndex: actualGroupIdx,
-        message: comments[commentIdx1],
+        message: pickUniqueComment(lang, comments, comment1Seed),
         minuteOffset: comment1Min,
       });
 
       if (commentRng.next() % 100 < 50) {
         const comment2Min = comment1Min + 2 + (commentRng.next() % 3);
-        const commentIdx2 = (commentSeed + 13 + commentRng.next()) % comments.length;
+        const comment2Seed = dayOfYear * 31 + slotSeed * 13 + commentCounter;
+        commentCounter++;
         schedule.push({
           botIndex: shuffledCommenters[1 % shuffledCommenters.length],
           groupIndex: actualGroupIdx,
-          message: comments[commentIdx2],
+          message: pickUniqueComment(lang, comments, comment2Seed),
           minuteOffset: comment2Min,
         });
       }
