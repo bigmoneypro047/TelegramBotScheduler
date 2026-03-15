@@ -403,27 +403,6 @@ function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, acti
   return schedule;
 }
 
-interface NightItem {
-  type: "text" | "photo";
-  message: string;
-  photoUrl?: string;
-}
-
-const NIGHT_PHOTOS = [
-  "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=480&q=80&auto=format",
-  "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=480&q=80&auto=format",
-  "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=480&q=80&auto=format",
-  "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=480&q=80&auto=format",
-  "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=480&q=80&auto=format",
-  "https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=480&q=80&auto=format",
-  "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=480&q=80&auto=format",
-  "https://images.unsplash.com/photo-1579532537598-459ecdaf39cc?w=480&q=80&auto=format",
-  "https://images.unsplash.com/photo-1518546305927-5a555bb7020d?w=480&q=80&auto=format",
-  "https://images.unsplash.com/photo-1642790106117-e829e14a795f?w=480&q=80&auto=format",
-  "https://images.unsplash.com/photo-1633158829585-23ba8f7c8caf?w=480&q=80&auto=format",
-  "https://images.unsplash.com/photo-1563986768609-322da13575f2?w=480&q=80&auto=format",
-];
-
 const NIGHT_THREADS_BY_LANG: Record<string, string[][]> = {
   English: [
     [
@@ -576,7 +555,7 @@ const NIGHT_THREADS_BY_LANG: Record<string, string[][]> = {
   ],
 };
 
-function generateNightSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[], languageOverride?: string | null): { botIndex: number; message: string; minuteOffset: number; type: "text" | "photo"; photoUrl?: string }[] {
+function generateNightSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[], languageOverride?: string | null): { botIndex: number; message: string; minuteOffset: number }[] {
   const lang = resolveGroupLanguage(languageOverride, dayOfYear);
   const threads = NIGHT_THREADS_BY_LANG[lang] || NIGHT_THREADS_BY_LANG["English"];
   const rng = betterRandom(dayOfYear * 100 + groupIndex * 13);
@@ -585,49 +564,17 @@ function generateNightSchedule(groupIndex: number, dayOfYear: number, activeBotI
   const threadIndex = (dayOfYear + groupIndex) % threads.length;
   const thread = threads[threadIndex];
 
-  const schedule: { botIndex: number; message: string; minuteOffset: number; type: "text" | "photo"; photoUrl?: string }[] = [];
+  const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
   let currentMinute = 0;
 
-  const photoInsertPoints = new Set<number>();
-  const totalMessages = thread.length;
-  const numPhotos = 2 + (dayOfYear + groupIndex) % 3;
-  const photoSeed = dayOfYear * 7 + groupIndex;
-  for (let p = 0; p < numPhotos; p++) {
-    const point = 2 + ((photoSeed + p * 3) % (totalMessages - 2));
-    photoInsertPoints.add(point);
-  }
-
-  let msgIndex = 0;
-  for (let i = 0; i < totalMessages; i++) {
+  for (let i = 0; i < thread.length; i++) {
     const botIdx = bots[i % bots.length];
-
     schedule.push({
       botIndex: botIdx,
       message: thread[i],
       minuteOffset: currentMinute,
-      type: "text",
     });
     currentMinute += 8 + (rng.next() % 7);
-
-    if (photoInsertPoints.has(i)) {
-      const photoIdx = (dayOfYear * 3 + groupIndex * 5 + i) % NIGHT_PHOTOS.length;
-      const photoCaptions = lang === "Indonesian"
-        ? ["Lihat ini 📸", "Bukti nyata 💰", "Hasil hari ini 📊", "Screenshot profit 🔥", "Alhamdulillah 💎"]
-        : lang === "Spanish"
-        ? ["Mira esto 📸", "Prueba real 💰", "Resultados de hoy 📊", "Captura de ganancias 🔥", "Bendecido 💎"]
-        : ["Check this out 📸", "Real proof 💰", "Today's results 📊", "Profit screenshot 🔥", "Blessed 💎"];
-      const captionIdx = (dayOfYear + i) % photoCaptions.length;
-
-      currentMinute += 3 + (rng.next() % 5);
-      schedule.push({
-        botIndex: bots[(i + 1) % bots.length],
-        message: photoCaptions[captionIdx],
-        minuteOffset: currentMinute,
-        type: "photo",
-        photoUrl: NIGHT_PHOTOS[photoIdx],
-      });
-      currentMinute += 5 + (rng.next() % 8);
-    }
   }
 
   return schedule;
@@ -1147,30 +1094,25 @@ async function recoverInProgressSessions(): Promise<void> {
     const elapsedMinutes = currentMinutes - nightStart;
     log(`RECOVERY: Server restarted during night session (${elapsedMinutes}min elapsed). Scheduling remaining...`, "scheduler");
 
+    const nightItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
     for (let g = 0; g < groupsList.length; g++) {
       const langOverride = (groupsList[g] as any).languageOverride || null;
       const items = generateNightSchedule(g, dayOfYear, activeBots, langOverride);
       const remaining = items.filter(item => item.minuteOffset > elapsedMinutes);
       for (const item of remaining) {
-        const delayMs = (item.minuteOffset - elapsedMinutes) * 60 * 1000;
-        const botName = `Userbot ${item.botIndex + 1}`;
-        const groupName = groupsList[g].name;
-
-        if (item.type === "photo" && item.photoUrl) {
-          setTimeout(async () => {
-            if (isDuplicate(botName, groupName, item.message)) return;
-            try {
-              await executeScheduledPhoto(botName, groupName, item.photoUrl!, item.message, "night_recovery");
-            } catch {}
-          }, delayMs);
-        } else {
-          setTimeout(async () => {
-            await sendOneMessage(botName, groupName, item.message, "night_recovery");
-          }, delayMs);
-        }
+        nightItems.push({
+          botName: `Userbot ${item.botIndex + 1}`,
+          groupName: groupsList[g].name,
+          message: item.message,
+          delayMs: (item.minuteOffset - elapsedMinutes) * 60 * 1000,
+        });
       }
     }
-    log(`RECOVERY: Night session recovery scheduled`, "scheduler");
+    nightItems.sort((a, b) => a.delayMs - b.delayMs);
+    if (nightItems.length > 0) {
+      const count = scheduleMessagesWithTimers(nightItems, "night_recovery");
+      log(`RECOVERY: ${count} night messages scheduled`, "scheduler");
+    }
   }
 
   const morningStart = 5 * 60;
@@ -1425,38 +1367,22 @@ export function startScheduler() {
       const activeBots = await getActiveBotIndices();
       log(`Night session: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
 
-      let totalScheduled = 0;
+      const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
       for (let g = 0; g < groupsList.length; g++) {
         const langOverride = (groupsList[g] as any).languageOverride || null;
         const items = generateNightSchedule(g, dayOfYear, activeBots, langOverride);
         for (const item of items) {
-          const delayMs = item.minuteOffset * 60 * 1000;
-          const botName = `Userbot ${item.botIndex + 1}`;
-          const groupName = groupsList[g].name;
-
-          if (item.type === "photo" && item.photoUrl) {
-            setTimeout(async () => {
-              if (isDuplicate(botName, groupName, item.message)) {
-                log(`[night] DEDUP SKIP photo: ${botName} → ${groupName}`, "scheduler");
-                return;
-              }
-              log(`[night] PHOTO START: ${botName} → ${groupName}`, "scheduler");
-              try {
-                await executeScheduledPhoto(botName, groupName, item.photoUrl!, item.message, "night_session");
-                log(`[night] PHOTO DONE: ${botName} → ${groupName}`, "scheduler");
-              } catch (err: any) {
-                log(`[night] PHOTO FAILED: ${botName} → ${groupName}: ${err.message}`, "scheduler");
-              }
-            }, delayMs);
-          } else {
-            setTimeout(async () => {
-              await sendOneMessage(botName, groupName, item.message, "night_session");
-            }, delayMs);
-          }
-          totalScheduled++;
+          allItems.push({
+            botName: `Userbot ${item.botIndex + 1}`,
+            groupName: groupsList[g].name,
+            message: item.message,
+            delayMs: item.minuteOffset * 60 * 1000,
+          });
         }
       }
-      log(`Night session: ${totalScheduled} messages+photos scheduled across ${groupsList.length} groups over ~120 min`, "scheduler");
+      allItems.sort((a, b) => a.delayMs - b.delayMs);
+      const count = scheduleMessagesWithTimers(allItems, "night_session");
+      log(`Night session: ${count} messages scheduled across ${groupsList.length} groups over ~120 min`, "scheduler");
     } catch (err: any) {
       log(`CRITICAL: Night session crashed: ${err.message}\n${err.stack}`, "scheduler");
     }
