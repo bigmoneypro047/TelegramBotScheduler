@@ -403,6 +403,236 @@ function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, acti
   return schedule;
 }
 
+interface NightItem {
+  type: "text" | "photo";
+  message: string;
+  photoUrl?: string;
+}
+
+const NIGHT_PHOTOS = [
+  "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=480&q=80&auto=format",
+  "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=480&q=80&auto=format",
+  "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=480&q=80&auto=format",
+  "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=480&q=80&auto=format",
+  "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=480&q=80&auto=format",
+  "https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=480&q=80&auto=format",
+  "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=480&q=80&auto=format",
+  "https://images.unsplash.com/photo-1579532537598-459ecdaf39cc?w=480&q=80&auto=format",
+  "https://images.unsplash.com/photo-1518546305927-5a555bb7020d?w=480&q=80&auto=format",
+  "https://images.unsplash.com/photo-1642790106117-e829e14a795f?w=480&q=80&auto=format",
+  "https://images.unsplash.com/photo-1633158829585-23ba8f7c8caf?w=480&q=80&auto=format",
+  "https://images.unsplash.com/photo-1563986768609-322da13575f2?w=480&q=80&auto=format",
+];
+
+const NIGHT_THREADS_BY_LANG: Record<string, string[][]> = {
+  English: [
+    [
+      "Can't sleep... just checked my portfolio and the numbers are looking beautiful 💰",
+      "Same here! The compound growth is unreal when you stay consistent",
+      "Nothing beats waking up to green charts 📈",
+      "This platform changed my whole financial trajectory honestly",
+      "Facts. My team earnings alone cover my monthly expenses now",
+      "The late night grind always pays off 🔥",
+      "Imagine sleeping while your money works for you",
+      "That's the dream we're all living now",
+      "Grateful for this community every single day",
+    ],
+    [
+      "3 AM motivation check — who's up building their future? 🌙",
+      "Always up! Sleep is for people without vision 💪",
+      "Just finished reviewing tomorrow's trading plan",
+      "The discipline to study markets at this hour is what separates us",
+      "Winners prepare while others dream",
+      "My withdrawal came through today, screenshot incoming 📸",
+      "That's what I love to see! Proof over promises",
+      "This community is different because the results are REAL",
+      "No cap. Changed my life in 6 months",
+    ],
+    [
+      "Late night vibes 🌃 Who else is planning tomorrow's trades?",
+      "Already set my alerts for the London session",
+      "Smart money never sleeps 💎",
+      "The dedication in this group is unmatched",
+      "Sharing my weekly profit breakdown tomorrow, stay tuned 📊",
+      "Can't wait to see those numbers!",
+      "Every week the results keep getting better",
+      "That's the power of following a proven system",
+      "Blessed to be part of this journey with you all ✨",
+    ],
+    [
+      "Night owls check in! What's your best trade this week? 🦉",
+      "Closed a beautiful position today, 45% gain",
+      "That's incredible! Consistency is the key 🔑",
+      "My team just hit a new milestone — 100 members strong",
+      "Growth is inevitable when you have the right mentorship",
+      "This platform's signals have been hitting different lately",
+      "Accuracy rate this month has been insane",
+      "And we're just getting started 🚀",
+      "The best investment is always in yourself",
+    ],
+    [
+      "Midnight reflections: 6 months ago I couldn't imagine this lifestyle 🌙",
+      "Look at us now — financial freedom isn't just a dream anymore",
+      "The grind at 3 AM is what built this reality",
+      "Passive income while the world sleeps 💤💰",
+      "My family doesn't stress about bills anymore, that's the real win",
+      "That's powerful. This is why we do what we do",
+      "Screenshot of today's earnings speaks louder than words",
+      "Numbers don't lie. The system works if you work it",
+      "Tomorrow we go even harder 🔥",
+    ],
+    [
+      "Who's staying up for the Asian market open? 🌏",
+      "Already positioned and ready to go",
+      "The early bird catches the profit 💸",
+      "Love the energy in this group even at this hour",
+      "That's because we're not average — we're elite",
+      "Just hit my target for the month and it's only the 15th",
+      "Overachievers only in this group 👑",
+      "Let's keep pushing, the sky isn't even the limit",
+      "Beyond grateful. Let's get this bread 🍞",
+    ],
+    [
+      "3 AM thoughts: financial literacy changed everything for me 📚",
+      "Once you understand money, you can never go back to being broke",
+      "This community taught me things school never could",
+      "Real education happens in groups like this",
+      "My passive income streams are multiplying every month",
+      "That compound effect is no joke 📈",
+      "Just reinvested my profits — the machine keeps growing",
+      "We're building generational wealth here",
+      "Ancestors would be proud of what we're creating ✨",
+    ],
+  ],
+  Spanish: [
+    [
+      "No puedo dormir... acabo de revisar mi portafolio y los números se ven hermosos 💰",
+      "¡Igual yo! El crecimiento compuesto es increíble cuando eres constante",
+      "Nada como despertar con gráficos verdes 📈",
+      "Esta plataforma cambió toda mi trayectoria financiera honestamente",
+      "Las ganancias de mi equipo cubren mis gastos mensuales ahora",
+      "El esfuerzo de la madrugada siempre vale la pena 🔥",
+      "Imagínate dormir mientras tu dinero trabaja para ti",
+      "Ese es el sueño que todos estamos viviendo ahora",
+      "Agradecido con esta comunidad cada día",
+    ],
+    [
+      "Motivación de las 3 AM — ¿quién está despierto construyendo su futuro? 🌙",
+      "¡Siempre despierto! Dormir es para gente sin visión 💪",
+      "Acabo de terminar de revisar el plan de trading para mañana",
+      "La disciplina de estudiar mercados a esta hora nos separa del resto",
+      "Los ganadores se preparan mientras otros sueñan",
+      "Mi retiro llegó hoy, captura de pantalla en camino 📸",
+      "¡Eso es lo que me gusta ver! Pruebas sobre promesas",
+      "Esta comunidad es diferente porque los resultados son REALES",
+      "Sin mentiras. Cambió mi vida en 6 meses",
+    ],
+    [
+      "Vibras nocturnas 🌃 ¿Quién más está planeando los trades de mañana?",
+      "Ya configuré mis alertas para la sesión de Londres",
+      "El dinero inteligente nunca duerme 💎",
+      "La dedicación en este grupo no tiene comparación",
+      "Comparto mi desglose de ganancias semanales mañana, estén atentos 📊",
+      "¡No puedo esperar a ver esos números!",
+      "Cada semana los resultados mejoran",
+      "Ese es el poder de seguir un sistema probado",
+      "Bendecido de ser parte de este camino con todos ustedes ✨",
+    ],
+  ],
+  Indonesian: [
+    [
+      "Tidak bisa tidur... baru cek portofolio dan angkanya terlihat indah 💰",
+      "Sama! Pertumbuhan majemuk luar biasa kalau konsisten",
+      "Tidak ada yang mengalahkan bangun dengan grafik hijau 📈",
+      "Platform ini mengubah seluruh perjalanan keuangan saya jujur",
+      "Penghasilan tim saya saja sudah cukup untuk biaya bulanan sekarang",
+      "Kerja keras di malam hari selalu membuahkan hasil 🔥",
+      "Bayangkan tidur sementara uangmu bekerja untukmu",
+      "Itulah mimpi yang sedang kita jalani sekarang",
+      "Bersyukur dengan komunitas ini setiap hari",
+    ],
+    [
+      "Motivasi jam 3 pagi — siapa yang bangun membangun masa depannya? 🌙",
+      "Selalu bangun! Tidur untuk orang tanpa visi 💪",
+      "Baru selesai review rencana trading besok",
+      "Disiplin belajar pasar di jam segini yang membedakan kita",
+      "Pemenang bersiap sementara yang lain bermimpi",
+      "Penarikan saya masuk hari ini, screenshot segera 📸",
+      "Itu yang saya suka lihat! Bukti di atas janji",
+      "Komunitas ini berbeda karena hasilnya NYATA",
+      "Serius. Mengubah hidup saya dalam 6 bulan",
+    ],
+    [
+      "Suasana malam 🌃 Siapa lagi yang merencanakan trading besok?",
+      "Sudah atur alert untuk sesi London",
+      "Uang pintar tidak pernah tidur 💎",
+      "Dedikasi di grup ini tidak tertandingi",
+      "Berbagi breakdown keuntungan mingguan besok, pantau terus 📊",
+      "Tidak sabar melihat angka-angkanya!",
+      "Setiap minggu hasilnya makin baik",
+      "Itulah kekuatan mengikuti sistem yang terbukti",
+      "Bersyukur menjadi bagian perjalanan ini bersama kalian semua ✨",
+    ],
+  ],
+};
+
+function generateNightSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[], languageOverride?: string | null): { botIndex: number; message: string; minuteOffset: number; type: "text" | "photo"; photoUrl?: string }[] {
+  const lang = resolveGroupLanguage(languageOverride, dayOfYear);
+  const threads = NIGHT_THREADS_BY_LANG[lang] || NIGHT_THREADS_BY_LANG["English"];
+  const rng = betterRandom(dayOfYear * 100 + groupIndex * 13);
+  const bots = assignConversationBots(9, rng, activeBotIndices);
+
+  const threadIndex = (dayOfYear + groupIndex) % threads.length;
+  const thread = threads[threadIndex];
+
+  const schedule: { botIndex: number; message: string; minuteOffset: number; type: "text" | "photo"; photoUrl?: string }[] = [];
+  let currentMinute = 0;
+
+  const photoInsertPoints = new Set<number>();
+  const totalMessages = thread.length;
+  const numPhotos = 2 + (dayOfYear + groupIndex) % 3;
+  const photoSeed = dayOfYear * 7 + groupIndex;
+  for (let p = 0; p < numPhotos; p++) {
+    const point = 2 + ((photoSeed + p * 3) % (totalMessages - 2));
+    photoInsertPoints.add(point);
+  }
+
+  let msgIndex = 0;
+  for (let i = 0; i < totalMessages; i++) {
+    const botIdx = bots[i % bots.length];
+
+    schedule.push({
+      botIndex: botIdx,
+      message: thread[i],
+      minuteOffset: currentMinute,
+      type: "text",
+    });
+    currentMinute += 8 + (rng.next() % 7);
+
+    if (photoInsertPoints.has(i)) {
+      const photoIdx = (dayOfYear * 3 + groupIndex * 5 + i) % NIGHT_PHOTOS.length;
+      const photoCaptions = lang === "Indonesian"
+        ? ["Lihat ini 📸", "Bukti nyata 💰", "Hasil hari ini 📊", "Screenshot profit 🔥", "Alhamdulillah 💎"]
+        : lang === "Spanish"
+        ? ["Mira esto 📸", "Prueba real 💰", "Resultados de hoy 📊", "Captura de ganancias 🔥", "Bendecido 💎"]
+        : ["Check this out 📸", "Real proof 💰", "Today's results 📊", "Profit screenshot 🔥", "Blessed 💎"];
+      const captionIdx = (dayOfYear + i) % photoCaptions.length;
+
+      currentMinute += 3 + (rng.next() % 5);
+      schedule.push({
+        botIndex: bots[(i + 1) % bots.length],
+        message: photoCaptions[captionIdx],
+        minuteOffset: currentMinute,
+        type: "photo",
+        photoUrl: NIGHT_PHOTOS[photoIdx],
+      });
+      currentMinute += 5 + (rng.next() % 8);
+    }
+  }
+
+  return schedule;
+}
+
 function generateDoneSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3], slotSeed: number = 0, languageOverride?: string | null): { botIndex: number; message: string; delaySec: number }[] {
   const lang = resolveGroupLanguage(languageOverride, dayOfYear);
   const doneMessages = DONE_MESSAGES_BY_LANG[lang] || DONE_MESSAGES_BY_LANG["English"];
@@ -649,6 +879,72 @@ async function sendUserbotMessage(sessionString: string, apiId: string, apiHash:
   return false;
 }
 
+async function sendUserbotPhoto(sessionString: string, apiId: string, apiHash: string, chatId: string, photoUrl: string, caption: string): Promise<boolean> {
+  if (process.env.NODE_ENV === "development") {
+    log("DEV MODE: Skipping userbot photo to avoid session conflicts with production", "telegram");
+    return true;
+  }
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const pythonBin = getPythonPath();
+      const { stdout } = await execFileAsync(pythonBin, [
+        "server/telegram_sender.py", "send_photo",
+        sessionString, apiId, apiHash, chatId, photoUrl, caption
+      ], { timeout: 90000 });
+      const result = JSON.parse(stdout.trim());
+      if (result.success) {
+        if (attempt > 0) log(`Userbot photo succeeded on retry #${attempt}`, "telegram");
+        return true;
+      }
+      log(`Userbot photo attempt ${attempt + 1} failed: ${result.error}`, "telegram");
+    } catch (err: any) {
+      const errMsg = err.message || "";
+      if (errMsg.includes("AuthKeyDuplicatedError") || errMsg.includes("auth key")) {
+        log(`SESSION BROKEN — this bot needs re-authentication. Skipping retries.`, "telegram");
+        return false;
+      }
+      log(`Userbot photo attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ${errMsg}`, "telegram");
+    }
+    if (attempt < MAX_RETRIES) {
+      const delay = RETRY_DELAYS[attempt] || 30000;
+      log(`Retrying photo in ${delay / 1000}s...`, "telegram");
+      await sleep(delay);
+    }
+  }
+  log(`Userbot photo FAILED after ${MAX_RETRIES + 1} attempts`, "telegram");
+  return false;
+}
+
+async function executeScheduledPhoto(botName: string, groupName: string, photoUrl: string, caption: string, period: string) {
+  let bots, groupsList;
+  try {
+    [bots, groupsList] = await Promise.all([
+      storage.getUserbots(),
+      storage.getGroups(),
+    ]);
+    if (bots.length === 0 || groupsList.length === 0) {
+      [bots, groupsList] = await Promise.all([queryBotsDirect(), queryGroupsDirect()]);
+    }
+  } catch (err: any) {
+    [bots, groupsList] = await Promise.all([queryBotsDirect(), queryGroupsDirect()]);
+  }
+
+  const group = groupsList.find((g: any) => g.name === groupName);
+  if (!group || !group.groupId) {
+    log(`Photo: Group ${groupName} not found`, "scheduler");
+    return;
+  }
+
+  const botIndex = parseInt(botName.replace("Userbot ", "")) - 1;
+  const bot = bots[botIndex];
+  if (!bot || !bot.sessionString || !bot.apiId || !bot.apiHash || !bot.isActive) {
+    log(`Photo: ${botName} not configured or inactive`, "scheduler");
+    return;
+  }
+  const success = await sendUserbotPhoto(bot.sessionString, bot.apiId, bot.apiHash, group.groupId, photoUrl, caption);
+  await storage.createMessageLog({ botName, groupName, message: `[PHOTO] ${caption}`, schedulePeriod: period, status: success ? "sent" : "failed" });
+}
+
 async function executeScheduledMessage(botName: string, groupName: string, message: string, period: string) {
   let config, bots, groupsList;
   try {
@@ -844,6 +1140,38 @@ async function recoverInProgressSessions(): Promise<void> {
   const currentMinutes = hour * 60 + minute;
   const dayOfYear = getDayOfYear();
   log(`RECOVERY: ${groupsList.length} groups loaded, WAT time ${hour}:${minute.toString().padStart(2,'0')}, checking sessions...`, "scheduler");
+
+  const nightStart = 3 * 60;
+  const nightEnd = 5 * 60;
+  if (currentMinutes >= nightStart && currentMinutes < nightEnd) {
+    const elapsedMinutes = currentMinutes - nightStart;
+    log(`RECOVERY: Server restarted during night session (${elapsedMinutes}min elapsed). Scheduling remaining...`, "scheduler");
+
+    for (let g = 0; g < groupsList.length; g++) {
+      const langOverride = (groupsList[g] as any).languageOverride || null;
+      const items = generateNightSchedule(g, dayOfYear, activeBots, langOverride);
+      const remaining = items.filter(item => item.minuteOffset > elapsedMinutes);
+      for (const item of remaining) {
+        const delayMs = (item.minuteOffset - elapsedMinutes) * 60 * 1000;
+        const botName = `Userbot ${item.botIndex + 1}`;
+        const groupName = groupsList[g].name;
+
+        if (item.type === "photo" && item.photoUrl) {
+          setTimeout(async () => {
+            if (isDuplicate(botName, groupName, item.message)) return;
+            try {
+              await executeScheduledPhoto(botName, groupName, item.photoUrl!, item.message, "night_recovery");
+            } catch {}
+          }, delayMs);
+        } else {
+          setTimeout(async () => {
+            await sendOneMessage(botName, groupName, item.message, "night_recovery");
+          }, delayMs);
+        }
+      }
+    }
+    log(`RECOVERY: Night session recovery scheduled`, "scheduler");
+  }
 
   const morningStart = 5 * 60;
   const morningEnd = 8 * 60 + 15;
@@ -1088,6 +1416,52 @@ export function startScheduler() {
     }, { timezone: NIGERIA_TZ });
     scheduledJobs.push(doneJob);
   }
+
+  const nightJob = cron.schedule("0 3 * * *", async () => {
+    try {
+      log("=== NIGHT SESSION TRIGGERED (3:00 AM - 5:00 AM) ===", "scheduler");
+      const dayOfYear = getDayOfYear();
+      const groupsList = await getGroupsWithRetry();
+      const activeBots = await getActiveBotIndices();
+      log(`Night session: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}]`, "scheduler");
+
+      let totalScheduled = 0;
+      for (let g = 0; g < groupsList.length; g++) {
+        const langOverride = (groupsList[g] as any).languageOverride || null;
+        const items = generateNightSchedule(g, dayOfYear, activeBots, langOverride);
+        for (const item of items) {
+          const delayMs = item.minuteOffset * 60 * 1000;
+          const botName = `Userbot ${item.botIndex + 1}`;
+          const groupName = groupsList[g].name;
+
+          if (item.type === "photo" && item.photoUrl) {
+            setTimeout(async () => {
+              if (isDuplicate(botName, groupName, item.message)) {
+                log(`[night] DEDUP SKIP photo: ${botName} → ${groupName}`, "scheduler");
+                return;
+              }
+              log(`[night] PHOTO START: ${botName} → ${groupName}`, "scheduler");
+              try {
+                await executeScheduledPhoto(botName, groupName, item.photoUrl!, item.message, "night_session");
+                log(`[night] PHOTO DONE: ${botName} → ${groupName}`, "scheduler");
+              } catch (err: any) {
+                log(`[night] PHOTO FAILED: ${botName} → ${groupName}: ${err.message}`, "scheduler");
+              }
+            }, delayMs);
+          } else {
+            setTimeout(async () => {
+              await sendOneMessage(botName, groupName, item.message, "night_session");
+            }, delayMs);
+          }
+          totalScheduled++;
+        }
+      }
+      log(`Night session: ${totalScheduled} messages+photos scheduled across ${groupsList.length} groups over ~120 min`, "scheduler");
+    } catch (err: any) {
+      log(`CRITICAL: Night session crashed: ${err.message}\n${err.stack}`, "scheduler");
+    }
+  }, { timezone: NIGERIA_TZ });
+  scheduledJobs.push(nightJob);
 
   const eveningJob = cron.schedule("25 15 * * *", async () => {
     try {

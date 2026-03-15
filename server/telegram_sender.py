@@ -104,6 +104,52 @@ async def check_session(session_string, api_id, api_hash):
             pass
         print(json.dumps({"success": False, "error": str(e)}))
 
+async def send_photo(session_string, api_id, api_hash, chat_id, photo_url, caption=""):
+    import tempfile
+    import urllib.request
+    import os
+
+    client = TelegramClient(StringSession(session_string), int(api_id), api_hash)
+    await client.connect()
+    
+    if not await client.is_user_authorized():
+        print(json.dumps({"success": False, "error": "Session not authorized"}))
+        await client.disconnect()
+        return
+    
+    tmp_path = None
+    try:
+        target_id = int(chat_id)
+        if target_id < -1000000000000:
+            channel_id = abs(target_id) - 1000000000000
+            entity = await client.get_entity(PeerChannel(channel_id))
+        else:
+            entity = await client.get_entity(target_id)
+        
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
+        os.close(tmp_fd)
+        req = urllib.request.Request(photo_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            with open(tmp_path, "wb") as f:
+                f.write(resp.read())
+
+        await client.send_file(entity, tmp_path, caption=caption)
+        new_session = client.session.save()
+        await client.disconnect()
+        print(json.dumps({"success": True, "session": new_session}))
+    except Exception as e:
+        print(json.dumps({"success": False, "error": str(e)}))
+        try:
+            await client.disconnect()
+        except:
+            pass
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except:
+                pass
+
 if __name__ == "__main__":
     action = sys.argv[1]
     
@@ -136,3 +182,12 @@ if __name__ == "__main__":
         phone_code_hash = sys.argv[7]
         password = sys.argv[8] if len(sys.argv) > 8 else None
         asyncio.run(login_verify_code(session_string, api_id, api_hash, phone, code, phone_code_hash, password))
+    
+    elif action == "send_photo":
+        session_string = sys.argv[2]
+        api_id = sys.argv[3]
+        api_hash = sys.argv[4]
+        chat_id = sys.argv[5]
+        photo_url = sys.argv[6]
+        caption = sys.argv[7] if len(sys.argv) > 7 else ""
+        asyncio.run(send_photo(session_string, api_id, api_hash, chat_id, photo_url, caption))
