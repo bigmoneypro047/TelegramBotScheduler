@@ -444,6 +444,26 @@ const DINNER_PHOTOS: { file: string; assignedBot: number; timeOfDay: "day" | "ni
   { file: "meal_38.jpg", assignedBot: 1, timeOfDay: "night" },
   { file: "meal_39.jpg", assignedBot: 2, timeOfDay: "night" },
   { file: "meal_40.jpg", assignedBot: 3, timeOfDay: "night" },
+  { file: "meal_41.jpg", assignedBot: 4, timeOfDay: "night" },
+  { file: "meal_42.jpg", assignedBot: 5, timeOfDay: "night" },
+  { file: "meal_43.jpg", assignedBot: 6, timeOfDay: "night" },
+  { file: "meal_44.jpg", assignedBot: 7, timeOfDay: "night" },
+  { file: "meal_45.jpg", assignedBot: 8, timeOfDay: "day" },
+  { file: "meal_46.jpg", assignedBot: 0, timeOfDay: "night" },
+  { file: "meal_47.jpg", assignedBot: 1, timeOfDay: "night" },
+  { file: "meal_48.jpg", assignedBot: 2, timeOfDay: "night" },
+  { file: "meal_49.jpg", assignedBot: 3, timeOfDay: "day" },
+  { file: "meal_50.jpg", assignedBot: 4, timeOfDay: "day" },
+  { file: "meal_51.jpg", assignedBot: 5, timeOfDay: "day" },
+  { file: "meal_52.jpg", assignedBot: 6, timeOfDay: "night" },
+  { file: "meal_53.jpg", assignedBot: 7, timeOfDay: "day" },
+  { file: "meal_54.jpg", assignedBot: 8, timeOfDay: "day" },
+  { file: "meal_55.jpg", assignedBot: 0, timeOfDay: "day" },
+  { file: "meal_56.jpg", assignedBot: 1, timeOfDay: "day" },
+  { file: "meal_57.jpg", assignedBot: 2, timeOfDay: "day" },
+  { file: "meal_58.jpg", assignedBot: 3, timeOfDay: "day" },
+  { file: "meal_59.jpg", assignedBot: 4, timeOfDay: "night" },
+  { file: "meal_60.jpg", assignedBot: 5, timeOfDay: "night" },
 ];
 
 const PHOTO_CAPTIONS_NIGHT: Record<string, string[]> = {
@@ -724,13 +744,38 @@ interface DinnerScheduleItem {
   photoFile?: string;
 }
 
-function generateDinnerSession(groupIndex: number, dayOfYear: number, slotSeed: number, activeBotIndices: number[], languageOverride?: string | null): DinnerScheduleItem[] {
+function selectUniquePhotosForSession(dayOfYear: number, slotSeed: number, groupCount: number): typeof DINNER_PHOTOS {
+  const isNightSession = slotSeed === 0;
+  const timeFilter = isNightSession ? "night" : "day";
+  const filteredPhotos = DINNER_PHOTOS.filter(p => p.timeOfDay === timeFilter);
+
+  const selected: typeof DINNER_PHOTOS = [];
+  const usedBots = new Set<number>();
+  const startIdx = dayOfYear % filteredPhotos.length;
+
+  for (let attempt = 0; attempt < filteredPhotos.length && selected.length < groupCount; attempt++) {
+    const photo = filteredPhotos[(startIdx + attempt) % filteredPhotos.length];
+    if (!usedBots.has(photo.assignedBot)) {
+      usedBots.add(photo.assignedBot);
+      selected.push(photo);
+    }
+  }
+
+  while (selected.length < groupCount) {
+    const fallbackIdx = (startIdx + selected.length) % filteredPhotos.length;
+    selected.push(filteredPhotos[fallbackIdx]);
+  }
+
+  return selected;
+}
+
+function generateDinnerSession(groupIndex: number, dayOfYear: number, slotSeed: number, activeBotIndices: number[], languageOverride?: string | null, preSelectedPhoto?: typeof DINNER_PHOTOS[number]): DinnerScheduleItem[] {
   const lang = resolveGroupLanguage(languageOverride, dayOfYear);
   const isNightSession = slotSeed === 0;
   const timeFilter = isNightSession ? "night" : "day";
   const filteredPhotos = DINNER_PHOTOS.filter(p => p.timeOfDay === timeFilter);
   const photoIndex = dayOfYear % filteredPhotos.length;
-  const photo = filteredPhotos[photoIndex];
+  const photo = preSelectedPhoto || filteredPhotos[photoIndex];
 
   const captionsMap = isNightSession ? PHOTO_CAPTIONS_NIGHT : PHOTO_CAPTIONS_DAY;
   const captions = captionsMap[lang] || captionsMap["English"];
@@ -1599,10 +1644,9 @@ export function startScheduler() {
         const activeBots = await getActiveBotIndices();
         const isNightSession = slotSeed === 0;
         const timeFilter = isNightSession ? "night" : "day";
-        const filteredPhotos = DINNER_PHOTOS.filter(p => p.timeOfDay === timeFilter);
-        const photoIdx = dayOfYear % filteredPhotos.length;
-        const selectedPhoto = filteredPhotos[photoIdx];
-        log(`Dinner ${lsSlot.label}: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}], photo=${selectedPhoto.file} (${timeFilter}) by Bot ${selectedPhoto.assignedBot + 1}`, "scheduler");
+        const uniquePhotos = selectUniquePhotosForSession(dayOfYear, slotSeed, groupsList.length);
+        const photoSummary = uniquePhotos.map((p, i) => `G${i+1}:${p.file}(Bot${p.assignedBot+1})`).join(", ");
+        log(`Dinner ${lsSlot.label}: ${groupsList.length} groups, activeBots=[${activeBots.join(",")}], photos=[${photoSummary}] (${timeFilter})`, "scheduler");
 
         const mealsDir = getMealsDir();
         const period = `dinner_${lsSlot.label}`;
@@ -1610,7 +1654,7 @@ export function startScheduler() {
 
         for (let g = 0; g < groupsList.length; g++) {
           const langOverride = (groupsList[g] as any).languageOverride || null;
-          const items = generateDinnerSession(g, dayOfYear, slotSeed, activeBots, langOverride);
+          const items = generateDinnerSession(g, dayOfYear, slotSeed, activeBots, langOverride, uniquePhotos[g]);
           for (const item of items) {
             const delayMs = item.minuteOffset * 60 * 1000;
             const botName = `Userbot ${item.botIndex + 1}`;
