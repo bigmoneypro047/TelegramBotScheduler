@@ -152,20 +152,25 @@ const MAIN_BOT_MESSAGES: Record<string, string[]> = {
   ],
 };
 
-const READY_MESSAGES = [
-  "Ready",
-  "Ready",
-  "Ready",
-  "Ready",
-  "Ready",
-  "Ready",
-  "I'm ready",
-  "All set",
-  "Ready for the signal",
-];
+const READY_MESSAGES_BY_LANG: Record<string, string[]> = {
+  English: ["Ready", "Ready", "Ready", "Ready", "Ready", "Ready", "I'm ready", "All set", "Ready for the signal"],
+  Spanish: ["Listo", "Listo", "Listo", "Listo", "Listo", "Listo", "Estoy listo", "Preparado", "Listo para la señal"],
+  French: ["Prêt", "Prêt", "Prêt", "Prêt", "Prêt", "Prêt", "Je suis prêt", "Tout est prêt", "Prêt pour le signal"],
+  Arabic: ["جاهز", "جاهز", "جاهز", "جاهز", "جاهز", "جاهز", "أنا جاهز", "مستعد", "جاهز للإشارة"],
+  Indonesian: ["Siap", "Siap", "Siap", "Siap", "Siap", "Siap", "Saya siap", "Sudah siap", "Siap untuk sinyal"],
+  Filipino: ["Handa", "Handa", "Handa", "Handa", "Handa", "Handa", "Handa na ako", "Nakahanda na", "Handa para sa signal"],
+  Vietnamese: ["Sẵn sàng", "Sẵn sàng", "Sẵn sàng", "Sẵn sàng", "Sẵn sàng", "Sẵn sàng", "Tôi sẵn sàng", "Đã sẵn sàng", "Sẵn sàng cho tín hiệu"],
+};
 
-
-const DONE_MESSAGES = ["Done"];
+const DONE_MESSAGES_BY_LANG: Record<string, string[]> = {
+  English: ["Done"],
+  Spanish: ["Hecho"],
+  French: ["Terminé"],
+  Arabic: ["تم"],
+  Indonesian: ["Selesai"],
+  Filipino: ["Tapos na"],
+  Vietnamese: ["Xong"],
+};
 
 
 const READY_WINDOWS = [
@@ -236,9 +241,11 @@ function generateNaturalBotOrder(count: number, activeBotIndices: number[], seed
   return order;
 }
 
-function generateReadySchedule(windowIndex: number, groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3]): { botIndex: number; message: string; minuteOffset: number }[] {
+function generateReadySchedule(windowIndex: number, groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3], languageOverride?: string | null): { botIndex: number; message: string; minuteOffset: number }[] {
+  const lang = resolveGroupLanguage(languageOverride, dayOfYear);
+  const readyMessages = READY_MESSAGES_BY_LANG[lang] || READY_MESSAGES_BY_LANG["English"];
   const seed = dayOfYear * 1000 + windowIndex * 100 + groupIndex;
-  const shuffledMessages = shuffleArray(READY_MESSAGES, seed);
+  const shuffledMessages = shuffleArray(readyMessages, seed);
   const botOrder = generateNaturalBotOrder(activeBotIndices.length, activeBotIndices, seed + 7);
   const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
 
@@ -396,7 +403,9 @@ function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, acti
   return schedule;
 }
 
-function generateDoneSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3], slotSeed: number = 0): { botIndex: number; message: string; delaySec: number }[] {
+function generateDoneSchedule(groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3], slotSeed: number = 0, languageOverride?: string | null): { botIndex: number; message: string; delaySec: number }[] {
+  const lang = resolveGroupLanguage(languageOverride, dayOfYear);
+  const doneMessages = DONE_MESSAGES_BY_LANG[lang] || DONE_MESSAGES_BY_LANG["English"];
   const schedule: { botIndex: number; message: string; delaySec: number }[] = [];
   const seed = dayOfYear * 30 + groupIndex * 7 + slotSeed;
   const botOrder = shuffleArray(activeBotIndices, seed);
@@ -405,7 +414,7 @@ function generateDoneSchedule(groupIndex: number, dayOfYear: number, activeBotIn
   for (let i = 0; i < botOrder.length; i++) {
     schedule.push({
       botIndex: botOrder[i],
-      message: "Done",
+      message: doneMessages[i % doneMessages.length],
       delaySec: currentSec,
     });
     currentSec += 20 + (seed + i) % 20;
@@ -507,7 +516,8 @@ export async function getFullScheduleForToday(): Promise<any> {
     const window = READY_WINDOWS[w];
     const windowSchedule: any[] = [];
     for (let g = 0; g < numGroups; g++) {
-      const items = generateReadySchedule(w, g, dayOfYear, activeBots);
+      const langOverride = (groupsList[g] as any)?.languageOverride || null;
+      const items = generateReadySchedule(w, g, dayOfYear, activeBots, langOverride);
       windowSchedule.push({
         groupIndex: g,
         messages: items.map(item => {
@@ -541,7 +551,8 @@ export async function getFullScheduleForToday(): Promise<any> {
   ];
   for (const slot of previewDoneSlots) {
     for (let g = 0; g < numGroups; g++) {
-      const doneItems = generateDoneSchedule(g, dayOfYear, activeBots, slot.slotIndex);
+      const langOverrideDone = (groupsList[g] as any)?.languageOverride || null;
+      const doneItems = generateDoneSchedule(g, dayOfYear, activeBots, slot.slotIndex, langOverrideDone);
       schedule.doneWindow.push({
         groupIndex: g,
         slotTime: slot.label,
@@ -907,7 +918,8 @@ async function recoverInProgressSessions(): Promise<void> {
       log(`RECOVERY: Server restarted during Done session (${doneSlot.label}). Scheduling remaining...`, "scheduler");
       const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
       for (let g = 0; g < groupsList.length; g++) {
-        const items = generateDoneSchedule(g, dayOfYear, activeBots, doneSlot.slotIndex);
+        const langOverride = (groupsList[g] as any).languageOverride || null;
+        const items = generateDoneSchedule(g, dayOfYear, activeBots, doneSlot.slotIndex, langOverride);
         const remaining = items.filter(item => item.delaySec > elapsedSec);
         for (const item of remaining) {
           allItems.push({
@@ -1009,7 +1021,8 @@ export function startScheduler() {
 
         const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
         for (let g = 0; g < groupsList.length; g++) {
-          const items = generateReadySchedule(w, g, dayOfYear, activeBots);
+          const langOverride = (groupsList[g] as any).languageOverride || null;
+          const items = generateReadySchedule(w, g, dayOfYear, activeBots, langOverride);
           for (const item of items) {
             allItems.push({
               botName: `Userbot ${item.botIndex + 1}`,
@@ -1053,7 +1066,8 @@ export function startScheduler() {
 
         const allItems: { botName: string; groupName: string; message: string; delayMs: number }[] = [];
         for (let g = 0; g < groupsList.length; g++) {
-          const items = generateDoneSchedule(g, dayOfYear, activeBots, slotIndex);
+          const langOverride = (groupsList[g] as any).languageOverride || null;
+          const items = generateDoneSchedule(g, dayOfYear, activeBots, slotIndex, langOverride);
           for (const item of items) {
             allItems.push({
               botName: `Userbot ${item.botIndex + 1}`,
