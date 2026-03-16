@@ -216,28 +216,103 @@ RESPONSES = {
     },
 }
 
-PROFESSOR_RESPONSES = [
-    "Good day professor!",
-    "Welcome professor!",
-    "Good morning professor!",
-    "Hello professor, great to see you!",
-    "Greetings professor!",
-    "Welcome back professor!",
-    "Good to see you professor!",
-    "Hey professor! Welcome!",
-    "Good day to you professor!",
-    "Welcome professor, always a pleasure!",
-    "Hello professor, hope you're doing well!",
-    "Good evening professor!",
-    "Hi professor! Glad you're here!",
-    "Professor! Welcome!",
-    "Great to have you here professor!",
-    "Good afternoon professor!",
-    "Welcome professor, we're glad to have you!",
-    "Hey professor, good to see you again!",
-]
+PROFESSOR_RESPONSES_BY_LANG = {
+    "english": [
+        "Good day professor!", "Welcome professor!", "Good morning professor!",
+        "Hello professor, great to see you!", "Greetings professor!",
+        "Welcome back professor!", "Good to see you professor!",
+        "Hey professor! Welcome!", "Good day to you professor!",
+        "Welcome professor, always a pleasure!", "Hello professor, hope you're doing well!",
+        "Good evening professor!", "Hi professor! Glad you're here!",
+        "Professor! Welcome!", "Great to have you here professor!",
+        "Good afternoon professor!", "Welcome professor, we're glad to have you!",
+        "Hey professor, good to see you again!",
+    ],
+    "spanish": [
+        "¡Buen día profesor!", "¡Bienvenido profesor!", "¡Buenos días profesor!",
+        "¡Hola profesor, qué gusto verlo!", "¡Saludos profesor!",
+        "¡Bienvenido de vuelta profesor!", "¡Qué bueno verlo profesor!",
+        "¡Hey profesor! ¡Bienvenido!", "¡Buen día para usted profesor!",
+        "¡Bienvenido profesor, siempre un placer!", "¡Hola profesor, espero que esté bien!",
+        "¡Buenas noches profesor!", "¡Hola profesor! ¡Me alegra que esté aquí!",
+        "¡Profesor! ¡Bienvenido!", "¡Qué bueno tenerlo aquí profesor!",
+        "¡Buenas tardes profesor!", "¡Bienvenido profesor, estamos contentos de tenerlo!",
+    ],
+    "french": [
+        "Bonjour professeur!", "Bienvenue professeur!", "Bon matin professeur!",
+        "Bonjour professeur, ravi de vous voir!", "Salutations professeur!",
+        "Bon retour professeur!", "Content de vous voir professeur!",
+        "Hey professeur! Bienvenue!", "Bonne journée professeur!",
+        "Bienvenue professeur, toujours un plaisir!", "Bonjour professeur, j'espère que vous allez bien!",
+        "Bonsoir professeur!", "Professeur! Bienvenue!",
+        "Ravi de vous avoir ici professeur!", "Bon après-midi professeur!",
+    ],
+    "arabic": [
+        "أهلاً بروفيسور!", "مرحباً بروفيسور!", "صباح الخير بروفيسور!",
+        "مرحباً بروفيسور، سعيدين بوجودك!", "تحياتي بروفيسور!",
+        "أهلاً بعودتك بروفيسور!", "سعيد برؤيتك بروفيسور!",
+        "بروفيسور! أهلاً وسهلاً!", "يوم سعيد بروفيسور!",
+        "مرحباً بروفيسور، دائماً سعداء بوجودك!", "مرحباً بروفيسور، أتمنى أنك بخير!",
+        "مساء الخير بروفيسور!", "نورت المجموعة بروفيسور!",
+        "حياك الله بروفيسور!", "بروفيسور، سعيدين بعودتك!",
+    ],
+    "filipino": [
+        "Magandang araw professor!", "Welcome professor!", "Magandang umaga professor!",
+        "Hello professor, masaya kaming makita kayo!", "Pagbati professor!",
+        "Welcome back professor!", "Masaya kaming makita kayo professor!",
+        "Hey professor! Welcome!", "Magandang araw sa inyo professor!",
+        "Welcome professor, laging kasiyahan!", "Hello professor, sana okay kayo!",
+        "Magandang gabi professor!", "Professor! Welcome!",
+        "Masaya kaming nandito kayo professor!", "Magandang hapon professor!",
+    ],
+    "indonesian": [
+        "Selamat datang profesor!", "Selamat pagi profesor!", "Halo profesor, senang melihat Anda!",
+        "Salam profesor!", "Selamat datang kembali profesor!",
+        "Senang melihat Anda profesor!", "Hey profesor! Selamat datang!",
+        "Selamat siang profesor!", "Selamat datang profesor, selalu senang!",
+        "Halo profesor, semoga Anda baik-baik saja!", "Selamat malam profesor!",
+        "Profesor! Selamat datang!", "Senang Anda ada di sini profesor!",
+        "Selamat sore profesor!", "Selamat datang profesor, kami senang Anda bergabung!",
+    ],
+    "urdu": [
+        "خوش آمدید پروفیسر!", "السلام علیکم پروفیسر!", "صبح بخیر پروفیسر!",
+        "ہیلو پروفیسر، آپ کو دیکھ کر خوشی ہوئی!", "آداب پروفیسر!",
+        "واپسی پر خوش آمدید پروفیسر!", "آپ کو دیکھ کر اچھا لگا پروفیسر!",
+        "پروفیسر! خوش آمدید!", "شام بخیر پروفیسر!",
+        "خوش آمدید پروفیسر، ہمیشہ خوشی ہوتی ہے!", "ہیلو پروفیسر، امید ہے آپ خیریت سے ہیں!",
+        "پروفیسر! مرحبا!", "آپ کا یہاں ہونا اچھا لگا پروفیسر!",
+    ],
+    "vietnamese": [
+        "Chào giáo sư!", "Chào mừng giáo sư!", "Chào buổi sáng giáo sư!",
+        "Xin chào giáo sư, rất vui được gặp!", "Lời chào giáo sư!",
+        "Chào mừng giáo sư trở lại!", "Rất vui gặp giáo sư!",
+        "Giáo sư! Chào mừng!", "Chúc giáo sư ngày tốt lành!",
+        "Chào mừng giáo sư, luôn là niềm vui!", "Xin chào giáo sư, hy vọng giáo sư khỏe!",
+        "Chào buổi tối giáo sư!", "Giáo sư! Rất vui có giáo sư ở đây!",
+        "Chào buổi chiều giáo sư!", "Chào mừng giáo sư, chúng tôi rất vui!",
+    ],
+}
+
+LANGUAGES_ROTATION = ["English", "Spanish", "French", "Arabic", "Filipino", "Indonesian", "Urdu", "Vietnamese"]
 
 last_responders = []
+group_languages = {}
+
+def get_day_of_year():
+    import datetime
+    now = datetime.datetime.now()
+    return now.timetuple().tm_yday
+
+def get_rotating_language():
+    day = get_day_of_year()
+    return LANGUAGES_ROTATION[day % len(LANGUAGES_ROTATION)].lower()
+
+def get_group_language(chat_id_str):
+    if chat_id_str and chat_id_str in group_languages:
+        override = group_languages[chat_id_str]
+        if override:
+            return override.lower()
+    return get_rotating_language()
 
 def classify_message(text):
     text_lower = text.lower().strip()
@@ -283,9 +358,11 @@ cooldowns = {}
 COOLDOWN_SECONDS = 120
 
 async def main():
+    global group_languages
     data = json.loads(sys.argv[1])
     bots_data = data["bots"]
     group_ids = data["groupIds"]
+    group_languages = data.get("groupLanguages", {})
 
     if len(bots_data) == 0:
         print(json.dumps({"type": "error", "msg": "No bots provided"}), flush=True)
@@ -418,13 +495,16 @@ async def main():
             delay = random.randint(15, 45)
             await asyncio.sleep(delay)
 
+            group_lang = get_group_language(chat_id_str)
+
             if is_knox:
-                professor_response = random.choice(PROFESSOR_RESPONSES)
+                prof_pool = PROFESSOR_RESPONSES_BY_LANG.get(group_lang, PROFESSOR_RESPONSES_BY_LANG["english"])
+                professor_response = random.choice(prof_pool)
                 try:
                     await listener_client.send_message(group_entities[chat_id_str], professor_response)
                     print(json.dumps({
                         "type": "greeting_sent",
-                        "msg": f"{bot_label} replied '{professor_response}' (professor) in chat {chat.id}",
+                        "msg": f"{bot_label} replied '{professor_response}' (professor/{group_lang}) in chat {chat.id}",
                         "botIndex": connected_bot_index,
                         "response": professor_response,
                         "chatId": chat_id_str,
@@ -440,12 +520,12 @@ async def main():
                     "chatId": chat_id_str,
                 }), flush=True)
             else:
-                response = get_response(msg_type, lang)
+                response = get_response(msg_type, group_lang)
                 try:
                     await listener_client.send_message(group_entities[chat_id_str], response)
                     print(json.dumps({
                         "type": "greeting_sent",
-                        "msg": f"{bot_label} replied '{response}' ({lang}) in chat {chat.id}",
+                        "msg": f"{bot_label} replied '{response}' ({group_lang}) in chat {chat.id}",
                         "botIndex": connected_bot_index,
                         "response": response,
                         "chatId": chat_id_str,
@@ -458,13 +538,13 @@ async def main():
 
                 extra_responses = []
                 for _ in range(random.randint(1, 3)):
-                    extra_responses.append(get_response(msg_type, lang))
+                    extra_responses.append(get_response(msg_type, group_lang))
 
                 print(json.dumps({
                     "type": "dispatch_extra_responses",
                     "chatId": chat_id_str,
                     "msgType": msg_type,
-                    "lang": lang,
+                    "lang": group_lang,
                     "responses": extra_responses,
                 }), flush=True)
 
