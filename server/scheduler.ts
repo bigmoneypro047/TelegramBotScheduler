@@ -470,19 +470,28 @@ function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, acti
   const lang = resolveGroupLanguage(languageOverride, dayOfYear);
   const threads = MORNING_THREADS_BY_LANG[lang] || MORNING_THREADS_BY_LANG["English"];
   const dayCycle = dayOfYear % 30;
-  const threadIndex = (dayCycle + groupIndex) % threads.length;
-  const secondThreadIndex = (dayCycle + groupIndex + Math.max(1, Math.floor(threads.length / 2))) % threads.length;
 
-  const selectedThreads = [threads[threadIndex]];
-  if (secondThreadIndex !== threadIndex) {
-    selectedThreads.push(threads[secondThreadIndex]);
+  const numThreadsToUse = Math.min(4, threads.length);
+  const selectedThreads: string[][] = [];
+  const usedIndices = new Set<number>();
+  for (let i = 0; i < numThreadsToUse; i++) {
+    const idx = (dayCycle + groupIndex + i * Math.max(1, Math.floor(threads.length / numThreadsToUse))) % threads.length;
+    if (!usedIndices.has(idx)) {
+      usedIndices.add(idx);
+      selectedThreads.push(threads[idx]);
+    }
   }
 
   const seed = dayOfYear * 50 + groupIndex * 7;
   const schedule: { botIndex: number; message: string; minuteOffset: number; threadId: number; msgIndex: number; shouldReply: boolean }[] = [];
   let currentMinute = 0;
-  const totalMinutes = 200;
+  const totalMinutes = 120;
   const rng = betterRandom(seed + 77);
+
+  const totalMessages = selectedThreads.reduce((sum, t) => sum + t.length, 0);
+  const totalGapMinutes = totalMinutes - totalMessages * 3;
+  const gapBetweenThreads = Math.max(10, Math.floor(totalGapMinutes / (selectedThreads.length + 1)));
+  currentMinute = 2 + (rng.next() % 5);
 
   for (let t = 0; t < selectedThreads.length; t++) {
     const thread = selectedThreads[t];
@@ -502,10 +511,10 @@ function generateMorningChatSchedule(groupIndex: number, dayOfYear: number, acti
         msgIndex: m,
         shouldReply,
       });
-      currentMinute += 5;
+      currentMinute += 3 + (rng.next() % 4);
     }
 
-    currentMinute += 8 + (rng.next() % 7);
+    currentMinute += gapBetweenThreads + (rng.next() % 5);
   }
 
   return schedule;
