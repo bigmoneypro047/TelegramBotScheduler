@@ -28,7 +28,7 @@ function scheduleMessagesWithTimers(
   const groupNames = Array.from(new Set(allItems.map(i => i.groupName)));
   const groupStagger = new Map<string, number>();
   groupNames.forEach((name, idx) => {
-    groupStagger.set(name, idx * (60000 + Math.floor(Math.random() * 60000)));
+    groupStagger.set(name, idx * (5000 + Math.floor(Math.random() * 10000)));
   });
 
   let scheduled = 0;
@@ -319,27 +319,27 @@ function generateNaturalBotOrder(count: number, activeBotIndices: number[], seed
   return order;
 }
 
-function generateReadySchedule(windowIndex: number, groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3], languageOverride?: string | null): { botIndex: number; message: string; minuteOffset: number }[] {
+function generateReadySchedule(windowIndex: number, groupIndex: number, dayOfYear: number, activeBotIndices: number[] = [0, 1, 2, 3], languageOverride?: string | null): { botIndex: number; message: string; delaySeconds: number }[] {
   const lang = resolveGroupLanguage(languageOverride, dayOfYear);
   const readyMessages = READY_MESSAGES_BY_LANG[lang] || READY_MESSAGES_BY_LANG["English"];
   const seed = dayOfYear * 1000 + windowIndex * 100 + groupIndex;
   const shuffledMessages = shuffleArray(readyMessages, seed);
   const allBots = shuffleArray([...activeBotIndices], seed + 7);
-  const schedule: { botIndex: number; message: string; minuteOffset: number }[] = [];
+  const schedule: { botIndex: number; message: string; delaySeconds: number }[] = [];
 
   let s = seed + 7;
-  let currentMinute = 0;
+  let currentSeconds = 0;
 
   for (let i = 0; i < allBots.length; i++) {
     schedule.push({
       botIndex: allBots[i],
       message: shuffledMessages[i % shuffledMessages.length],
-      minuteOffset: currentMinute,
+      delaySeconds: currentSeconds,
     });
     s = (s * 1103515245 + 12345) & 0x7fffffff;
-    const gap = 1 + (s % 3);
-    currentMinute += gap;
-    if (currentMinute > 15) currentMinute = 15;
+    const gapSeconds = 15 + (s % 30);
+    currentSeconds += gapSeconds;
+    if (currentSeconds > 180) currentSeconds = 180;
   }
 
   return schedule;
@@ -1572,7 +1572,8 @@ export async function getFullScheduleForToday(): Promise<any> {
       windowSchedule.push({
         groupIndex: g,
         messages: items.map(item => {
-          const totalMin = window.startMin + item.minuteOffset;
+          const totalSec = window.startMin * 60 + item.delaySeconds;
+          const totalMin = Math.floor(totalSec / 60);
           const hour = window.startHour + Math.floor(totalMin / 60);
           const min = totalMin % 60;
           const ampm = hour >= 12 ? "PM" : "AM";
@@ -2203,7 +2204,7 @@ export function startScheduler() {
               botName: `Userbot ${item.botIndex + 1}`,
               groupName: groupsList[g].name,
               message: item.message,
-              delayMs: item.minuteOffset * 60 * 1000,
+              delayMs: item.delaySeconds * 1000,
             });
           }
         }
