@@ -278,10 +278,11 @@ function getLanguageForToday(): string {
   return LANGUAGES[getDayOfYear() % LANGUAGES.length];
 }
 
-function getMainBotMessageForToday(): string {
-  const lang = getLanguageForToday();
-  const messages = MAIN_BOT_MESSAGES[lang];
-  return messages[getDayOfYear() % messages.length];
+function getMainBotMessageForToday(languageOverride?: string | null): string {
+  const dayOfYear = getDayOfYear();
+  const lang = languageOverride || getLanguageForToday();
+  const messages = MAIN_BOT_MESSAGES[lang] || MAIN_BOT_MESSAGES["English"];
+  return messages[dayOfYear % messages.length];
 }
 
 function shuffleArray<T>(arr: T[], seed: number): T[] {
@@ -1246,17 +1247,23 @@ async function getActiveBotIndices(): Promise<number[]> {
 export async function getFullScheduleForToday(): Promise<any> {
   const dayOfYear = getDayOfYear();
   const language = getLanguageForToday();
-  const mainBotMessage = getMainBotMessageForToday();
   const groupsList = await storage.getGroups();
   const numGroups = groupsList.length || 5;
   const activeBots = await getActiveBotIndices();
 
   const conversationLanguage = getConversationLanguageForDay(dayOfYear);
 
+  const mainBotMessages: Record<string, string> = {};
+  for (const group of groupsList) {
+    const langOverride = (group as any).languageOverride || null;
+    mainBotMessages[group.name] = getMainBotMessageForToday(langOverride);
+  }
+
   const schedule: any = {
     language,
     conversationLanguage,
-    mainBotMessage,
+    mainBotMessage: getMainBotMessageForToday(),
+    mainBotMessagesByGroup: mainBotMessages,
     mainBotTime: "8:10 AM",
     groupNames: groupsList.map(g => g.name),
     activeBotIndices: activeBots,
@@ -1855,10 +1862,12 @@ export function startScheduler() {
   const mainBotJob = cron.schedule("10 8 * * *", async () => {
     try {
       log("=== MAIN BOT MESSAGE TRIGGERED ===", "scheduler");
-      const message = getMainBotMessageForToday();
       const groupsList = await getGroupsWithRetry();
       log(`Main bot: sending to ${groupsList.length} groups`, "scheduler");
       for (const group of groupsList) {
+        const langOverride = (group as any).languageOverride || null;
+        const message = getMainBotMessageForToday(langOverride);
+        log(`Main bot → ${group.name} (lang=${langOverride || "rotating"}): ${message.substring(0, 50)}...`, "scheduler");
         await sendOneMessage("Main Bot", group.name, message, "main_bot_8:10am");
       }
       log("=== MAIN BOT MESSAGE COMPLETE ===", "scheduler");
