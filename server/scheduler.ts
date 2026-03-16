@@ -1664,7 +1664,8 @@ async function sendTelegramBotMessage(token: string, chatId: string, message: st
   return false;
 }
 
-async function sendUserbotMessage(sessionString: string, apiId: string, apiHash: string, chatId: string, message: string, replyToMsgId?: number): Promise<{ success: boolean; messageId?: number }> {
+async function sendUserbotMessage(sessionString: string, apiId: string, apiHash: string, chatId: string, message: string, replyToMsgId?: number, botLabel?: string, groupLabel?: string): Promise<{ success: boolean; messageId?: number }> {
+  const tag = botLabel && groupLabel ? `${botLabel} → ${groupLabel}` : `chat ${chatId}`;
   if (process.env.NODE_ENV === "development") {
     log("DEV MODE: Skipping userbot message to avoid session conflicts with production", "telegram");
     return { success: true, messageId: Math.floor(Math.random() * 100000) };
@@ -1680,25 +1681,25 @@ async function sendUserbotMessage(sessionString: string, apiId: string, apiHash:
       const { stdout } = await execFileAsync(pythonBin, args, { timeout: 60000 });
       const result = JSON.parse(stdout.trim());
       if (result.success) {
-        if (attempt > 0) log(`Userbot message succeeded on retry #${attempt}`, "telegram");
+        if (attempt > 0) log(`${tag}: message succeeded on retry #${attempt}`, "telegram");
         return { success: true, messageId: result.messageId };
       }
-      log(`Userbot send attempt ${attempt + 1} failed: ${result.error}`, "telegram");
+      log(`${tag}: send attempt ${attempt + 1} failed: ${result.error}`, "telegram");
     } catch (err: any) {
       const errMsg = err.message || "";
       if (errMsg.includes("AuthKeyDuplicatedError") || errMsg.includes("auth key")) {
-        log(`SESSION BROKEN (AuthKeyDuplicatedError) — this bot needs re-authentication. Skipping retries.`, "telegram");
+        log(`${tag}: SESSION BROKEN (AuthKeyDuplicatedError) — needs re-authentication. Skipping retries.`, "telegram");
         return { success: false };
       }
-      log(`Userbot message attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ${errMsg}`, "telegram");
+      log(`${tag}: message attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ${errMsg}`, "telegram");
     }
     if (attempt < MAX_RETRIES) {
       const delay = RETRY_DELAYS[attempt] || 30000;
-      log(`Retrying in ${delay / 1000}s...`, "telegram");
+      log(`${tag}: retrying in ${delay / 1000}s...`, "telegram");
       await sleep(delay);
     }
   }
-  log(`Userbot message FAILED after ${MAX_RETRIES + 1} attempts`, "telegram");
+  log(`${tag}: message FAILED after ${MAX_RETRIES + 1} attempts`, "telegram");
   return { success: false };
 }
 
@@ -1835,7 +1836,7 @@ async function executeScheduledMessage(botName: string, groupName: string, messa
       await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: "skipped_inactive" });
       return undefined;
     }
-    const result = await sendUserbotMessage(bot.sessionString, bot.apiId, bot.apiHash, group.groupId, message, replyToMsgId);
+    const result = await sendUserbotMessage(bot.sessionString, bot.apiId, bot.apiHash, group.groupId, message, replyToMsgId, botName, groupName);
     await storage.createMessageLog({ botName, groupName, message, schedulePeriod: period, status: result.success ? "sent" : "failed" });
     return result.messageId;
   }
