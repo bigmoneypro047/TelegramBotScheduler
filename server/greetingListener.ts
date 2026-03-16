@@ -221,7 +221,7 @@ async function dispatchProfessorResponses(chatId: string) {
   const lang = getGroupLanguage(chatId);
   const responses = getProfessorResponses(lang);
   const shuffledResponses = [...responses].sort(() => Math.random() - 0.5);
-  const allBots = cachedExtraBots.map((b, i) => ({ bot: b, index: i + 1 }));
+  const allBots = cachedExtraBots.map((b, i) => ({ bot: b, index: i }));
 
   log(`PROFESSOR: Sending ${allBots.length} bot responses in ${lang} to ${chatId}`, "greeting");
 
@@ -249,7 +249,7 @@ async function dispatchProfessorResponses(chatId: string) {
 async function dispatchExtraResponses(chatId: string, responses: string[]) {
   if (cachedExtraBots.length === 0) return;
 
-  const available = cachedExtraBots.map((b, i) => ({ bot: b, index: i + 1 }));
+  const available = cachedExtraBots.map((b, i) => ({ bot: b, index: i }));
   const shuffled = available.sort(() => Math.random() - 0.5);
   const selected = shuffled.slice(0, Math.min(responses.length, shuffled.length));
 
@@ -316,7 +316,7 @@ export async function startGreetingListener(): Promise<{ started: boolean; reaso
       return { started: false, reason: "already_running" };
     }
 
-    cachedExtraBots = activeBots.slice(1);
+    cachedExtraBots = [...activeBots];
     cachedGroupLanguages = groupLanguages || {};
 
     const spawnData = {

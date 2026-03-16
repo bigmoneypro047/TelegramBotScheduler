@@ -1505,13 +1505,12 @@ async function getActiveBotIndices(): Promise<number[]> {
 
   const indices: number[] = [];
   for (let i = 0; i < bots.length; i++) {
-    if (i === 0) continue;
     if (bots[i].isActive && bots[i].sessionString && bots[i].apiId && bots[i].apiHash) {
       indices.push(i);
     }
   }
   if (indices.length > 0) return indices;
-  return bots.length > 1 ? bots.slice(1).map((_: any, i: number) => i + 1) : [1, 2, 3, 4, 5];
+  return bots.map((_: any, i: number) => i);
 }
 
 
