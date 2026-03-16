@@ -498,44 +498,11 @@ async def main():
             group_lang = get_group_language(chat_id_str)
 
             if is_knox:
-                prof_pool = PROFESSOR_RESPONSES_BY_LANG.get(group_lang, PROFESSOR_RESPONSES_BY_LANG["english"])
-                professor_response = random.choice(prof_pool)
-                try:
-                    await listener_client.send_message(group_entities[chat_id_str], professor_response)
-                    print(json.dumps({
-                        "type": "greeting_sent",
-                        "msg": f"{bot_label} replied '{professor_response}' (professor/{group_lang}) in chat {chat.id}",
-                        "botIndex": connected_bot_index,
-                        "response": professor_response,
-                        "chatId": chat_id_str,
-                    }), flush=True)
-                except Exception as e:
-                    print(json.dumps({
-                        "type": "error",
-                        "msg": f"{bot_label} failed to respond to professor: {str(e)}",
-                    }), flush=True)
-
                 print(json.dumps({
                     "type": "dispatch_professor_responses",
                     "chatId": chat_id_str,
                 }), flush=True)
             else:
-                response = get_response(msg_type, group_lang)
-                try:
-                    await listener_client.send_message(group_entities[chat_id_str], response)
-                    print(json.dumps({
-                        "type": "greeting_sent",
-                        "msg": f"{bot_label} replied '{response}' ({group_lang}) in chat {chat.id}",
-                        "botIndex": connected_bot_index,
-                        "response": response,
-                        "chatId": chat_id_str,
-                    }), flush=True)
-                except Exception as e:
-                    print(json.dumps({
-                        "type": "error",
-                        "msg": f"{bot_label} failed to respond: {str(e)}",
-                    }), flush=True)
-
                 extra_responses = []
                 for _ in range(random.randint(1, 3)):
                     extra_responses.append(get_response(msg_type, group_lang))

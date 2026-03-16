@@ -1514,6 +1514,7 @@ async function getActiveBotIndices(): Promise<number[]> {
   return bots.length > 1 ? bots.slice(1).map((_: any, i: number) => i + 1) : [1, 2, 3, 4, 5];
 }
 
+
 export async function getFullScheduleForToday(): Promise<any> {
   const dayOfYear = getDayOfYear();
   const language = getLanguageForToday();
