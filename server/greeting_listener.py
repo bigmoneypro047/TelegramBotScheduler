@@ -293,7 +293,7 @@ PROFESSOR_RESPONSES_BY_LANG = {
     ],
 }
 
-LANGUAGES_ROTATION = ["English", "Spanish", "French", "Arabic", "Filipino", "Indonesian", "Urdu", "Vietnamese"]
+LANGUAGES_ROTATION = ["English", "Spanish", "Arabic", "Indonesian", "Filipino", "Vietnamese"]
 
 last_responders = []
 group_languages = {}

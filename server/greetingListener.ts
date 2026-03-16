@@ -16,7 +16,7 @@ let restartTimer: ReturnType<typeof setTimeout> | null = null;
 let cachedExtraBots: Array<{ sessionString: string; apiId: string; apiHash: string; name: string }> = [];
 let cachedGroupLanguages: Record<string, string | null> = {};
 
-const LANGUAGES_ROTATION = ["English", "Spanish", "French", "Arabic", "Filipino", "Indonesian", "Urdu", "Vietnamese"];
+const LANGUAGES_ROTATION = ["English", "Spanish", "Arabic", "Indonesian", "Filipino", "Vietnamese"];
 
 function getRotatingLanguageForToday(): string {
   const now = new Date();

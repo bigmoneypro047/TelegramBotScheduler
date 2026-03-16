@@ -184,7 +184,7 @@ function getPythonPath(): string {
   return "python3";
 }
 
-const LANGUAGES = ["English", "Spanish", "French", "Arabic", "Filipino", "Indonesian", "Urdu", "Vietnamese"];
+const LANGUAGES = CONVERSATION_LANGUAGES;
 
 const MAIN_BOT_MESSAGES: Record<string, string[]> = {
   English: [
@@ -405,9 +405,7 @@ function resolveGroupLanguage(languageOverride: string | null | undefined, dayOf
   if (!languageOverride) return getConversationLanguageForDay(dayOfYear);
   const langs = languageOverride.split(",").map(l => l.trim()).filter(Boolean);
   if (langs.length === 0) return getConversationLanguageForDay(dayOfYear);
-  if (langs.length === 1) {
-    return (dayOfYear % 5 === 0) ? "English" : langs[0];
-  }
+  if (langs.length === 1) return langs[0];
   return langs[dayOfYear % langs.length];
 }
 
